@@ -1,29 +1,41 @@
 import { Outlet } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
+import { Sidebar, useSidebar, SidebarContext } from './Sidebar';
 import { Navbar } from './Navbar';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
-export function MainLayout() {
+function MainLayoutContent() {
   const { settings } = useSettings();
   const isMobile = useIsMobile();
+  const { collapsed } = useSidebar();
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
       <div className={cn(
-        'transition-all duration-300',
-        isMobile ? 'pl-0' : 'md:pl-64'
+        'transition-all duration-300 flex flex-col min-h-screen',
+        isMobile ? 'pl-0' : collapsed ? 'md:pl-14' : 'md:pl-56'
       )}>
         <Navbar />
-        <main className="p-4 sm:p-6 min-h-[calc(100vh-4rem)]">
+        <main className="flex-1 p-3 sm:p-4 lg:p-6">
           <Outlet />
         </main>
-        <footer className="border-t border-border py-4 px-4 sm:px-6 text-center text-xs sm:text-sm text-muted-foreground">
+        <footer className="border-t border-border py-3 px-3 sm:px-4 text-center text-xs text-muted-foreground">
           © {new Date().getFullYear()} {settings?.site_name || 'CardioRegistry'}. All rights reserved.
         </footer>
       </div>
     </div>
+  );
+}
+
+export function MainLayout() {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+      <MainLayoutContent />
+    </SidebarContext.Provider>
   );
 }

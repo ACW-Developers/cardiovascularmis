@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Patient, Profile } from '@/types/database';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,12 +12,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Calendar as CalendarIcon, Plus, Loader2, Clock, User } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, Loader2, Clock, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format, addDays } from 'date-fns';
+import { format, addDays, getDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+
+interface DoctorSchedule {
+  id: string;
+  doctor_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+}
 
 export default function Appointments() {
   const [searchParams] = useSearchParams();
@@ -30,12 +38,11 @@ export default function Appointments() {
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Form state
   const [formData, setFormData] = useState({
     patientId: preselectedPatientId || '',
     doctorId: '',
     appointmentDate: new Date(),
-    appointmentTime: '09:00',
+    appointmentTime: '',
     type: 'consultation',
     notes: '',
   });
@@ -53,7 +60,7 @@ export default function Appointments() {
     },
   });
 
-  // Fetch doctors
+  // Fetch doctors with their schedules
   const { data: doctors } = useQuery({
     queryKey: ['doctors-list'],
     queryFn: async () => {
@@ -76,7 +83,73 @@ export default function Appointments() {
     },
   });
 
-  // Fetch appointments
+  // Fetch doctor schedules
+  const { data: doctorSchedules } = useQuery({
+    queryKey: ['doctor-schedules'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('doctor_schedules')
+        .select('*')
+        .eq('is_available', true);
+      if (error) throw error;
+      return data as DoctorSchedule[];
+    },
+  });
+
+  // Fetch existing appointments for selected doctor and date to avoid double-booking
+  const { data: existingAppointments } = useQuery({
+    queryKey: ['existing-appointments', formData.doctorId, format(formData.appointmentDate, 'yyyy-MM-dd')],
+    queryFn: async () => {
+      if (!formData.doctorId) return [];
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('appointment_time')
+        .eq('doctor_id', formData.doctorId)
+        .eq('appointment_date', format(formData.appointmentDate, 'yyyy-MM-dd'))
+        .neq('status', 'cancelled');
+      if (error) throw error;
+      return data.map(a => a.appointment_time?.slice(0, 5));
+    },
+    enabled: !!formData.doctorId,
+  });
+
+  // Calculate available time slots based on doctor's schedule
+  const availableTimeSlots = useMemo(() => {
+    if (!formData.doctorId || !doctorSchedules) return [];
+
+    const dayOfWeek = getDay(formData.appointmentDate);
+    const doctorSchedule = doctorSchedules.find(
+      s => s.doctor_id === formData.doctorId && s.day_of_week === dayOfWeek
+    );
+
+    if (!doctorSchedule) return [];
+
+    const slots: string[] = [];
+    const startHour = parseInt(doctorSchedule.start_time.split(':')[0]);
+    const endHour = parseInt(doctorSchedule.end_time.split(':')[0]);
+
+    for (let h = startHour; h < endHour; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        const time = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        if (!existingAppointments?.includes(time)) {
+          slots.push(time);
+        }
+      }
+    }
+
+    return slots;
+  }, [formData.doctorId, formData.appointmentDate, doctorSchedules, existingAppointments]);
+
+  // Check if selected doctor has schedule for selected day
+  const hasSchedule = useMemo(() => {
+    if (!formData.doctorId || !doctorSchedules) return true;
+    const dayOfWeek = getDay(formData.appointmentDate);
+    return doctorSchedules.some(
+      s => s.doctor_id === formData.doctorId && s.day_of_week === dayOfWeek
+    );
+  }, [formData.doctorId, formData.appointmentDate, doctorSchedules]);
+
+  // Fetch appointments for display
   const { data: appointments, isLoading } = useQuery({
     queryKey: ['appointments', format(selectedDate, 'yyyy-MM-dd')],
     queryFn: async () => {
@@ -87,13 +160,12 @@ export default function Appointments() {
         .order('appointment_time');
       if (error) throw error;
 
-      // Fetch related patient and doctor data
       const patientIds = [...new Set(data.map(a => a.patient_id))];
       const doctorIds = [...new Set(data.map(a => a.doctor_id))];
 
       const [patientsRes, doctorsRes] = await Promise.all([
-        supabase.from('patients').select('id, first_name, last_name, patient_number').in('id', patientIds),
-        supabase.from('profiles').select('user_id, first_name, last_name').in('user_id', doctorIds),
+        patientIds.length > 0 ? supabase.from('patients').select('id, first_name, last_name, patient_number').in('id', patientIds) : { data: [] },
+        doctorIds.length > 0 ? supabase.from('profiles').select('user_id, first_name, last_name').in('user_id', doctorIds) : { data: [] },
       ]);
 
       return data.map(apt => ({
@@ -128,12 +200,13 @@ export default function Appointments() {
       });
 
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['existing-appointments'] });
       setDialogOpen(false);
       setFormData({
         patientId: '',
         doctorId: '',
         appointmentDate: new Date(),
-        appointmentTime: '09:00',
+        appointmentTime: '',
         type: 'consultation',
         notes: '',
       });
@@ -183,132 +256,164 @@ export default function Appointments() {
     );
   };
 
-  const timeSlots = [];
-  for (let h = 8; h <= 17; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      timeSlots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+  // Reset time when doctor or date changes
+  const handleDoctorChange = (doctorId: string) => {
+    setFormData(prev => ({ ...prev, doctorId, appointmentTime: '' }));
+  };
+
+  const handleDateChange = (date: Date | undefined) => {
+    if (date) {
+      setFormData(prev => ({ ...prev, appointmentDate: date, appointmentTime: '' }));
     }
-  }
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title flex items-center gap-3">
-            <CalendarIcon className="w-8 h-8 text-primary" />
+          <h1 className="page-title flex items-center gap-2">
+            <CalendarIcon className="w-6 h-6 text-primary" />
             Appointments
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             Schedule and manage patient appointments
           </p>
         </div>
         {role && ['admin', 'nurse'].includes(role) && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="gradient-primary">
-                <Plus className="w-4 h-4 mr-2" />
-                Schedule Appointment
+              <Button className="gradient-primary" size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                Schedule
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Schedule New Appointment</DialogTitle>
+                <DialogTitle className="text-base">Schedule New Appointment</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Patient *</Label>
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Patient *</Label>
                   <Select value={formData.patientId} onValueChange={(v) => setFormData(prev => ({ ...prev, patientId: v }))}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Select patient" />
                     </SelectTrigger>
                     <SelectContent>
                       {patients?.map((patient) => (
-                        <SelectItem key={patient.id} value={patient.id}>
+                        <SelectItem key={patient.id} value={patient.id} className="text-sm">
                           {patient.patient_number} - {patient.first_name} {patient.last_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Doctor *</Label>
-                  <Select value={formData.doctorId} onValueChange={(v) => setFormData(prev => ({ ...prev, doctorId: v }))}>
-                    <SelectTrigger>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Doctor *</Label>
+                  <Select value={formData.doctorId} onValueChange={handleDoctorChange}>
+                    <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Select doctor" />
                     </SelectTrigger>
                     <SelectContent>
                       {doctors?.map((doctor) => (
-                        <SelectItem key={doctor.user_id} value={doctor.user_id}>
+                        <SelectItem key={doctor.user_id} value={doctor.user_id} className="text-sm">
                           Dr. {doctor.first_name} {doctor.last_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Date *</Label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Date *</Label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('w-full justify-start text-left font-normal')}>
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {format(formData.appointmentDate, 'PPP')}
+                        <Button variant="outline" className="w-full justify-start text-left font-normal h-9 text-sm">
+                          <CalendarIcon className="mr-2 h-3 w-3" />
+                          {format(formData.appointmentDate, 'PP')}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
                           selected={formData.appointmentDate}
-                          onSelect={(date) => date && setFormData(prev => ({ ...prev, appointmentDate: date }))}
+                          onSelect={handleDateChange}
                           disabled={(date) => date < new Date()}
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Time *</Label>
-                    <Select value={formData.appointmentTime} onValueChange={(v) => setFormData(prev => ({ ...prev, appointmentTime: v }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {timeSlots.map((time) => (
-                          <SelectItem key={time} value={time}>{time}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Time *</Label>
+                    {!hasSchedule && formData.doctorId ? (
+                      <div className="flex items-center gap-1 text-xs text-warning h-9 px-2 border rounded-md bg-warning/5">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>Not available</span>
+                      </div>
+                    ) : availableTimeSlots.length === 0 && formData.doctorId ? (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground h-9 px-2 border rounded-md">
+                        <Clock className="w-3 h-3" />
+                        <span>No slots</span>
+                      </div>
+                    ) : (
+                      <Select 
+                        value={formData.appointmentTime} 
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, appointmentTime: v }))}
+                        disabled={!formData.doctorId || availableTimeSlots.length === 0}
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Select time" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTimeSlots.map((time) => (
+                            <SelectItem key={time} value={time} className="text-sm">{time}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Appointment Type</Label>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Appointment Type</Label>
                   <Select value={formData.type} onValueChange={(v) => setFormData(prev => ({ ...prev, type: v }))}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="consultation">Consultation</SelectItem>
-                      <SelectItem value="follow-up">Follow-up</SelectItem>
-                      <SelectItem value="pre-surgery">Pre-Surgery</SelectItem>
-                      <SelectItem value="post-surgery">Post-Surgery</SelectItem>
-                      <SelectItem value="emergency">Emergency</SelectItem>
+                      <SelectItem value="consultation" className="text-sm">Consultation</SelectItem>
+                      <SelectItem value="follow-up" className="text-sm">Follow-up</SelectItem>
+                      <SelectItem value="pre-surgery" className="text-sm">Pre-Surgery</SelectItem>
+                      <SelectItem value="post-surgery" className="text-sm">Post-Surgery</SelectItem>
+                      <SelectItem value="emergency" className="text-sm">Emergency</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Notes</Label>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Notes</Label>
                   <Textarea
                     value={formData.notes}
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                     rows={2}
+                    className="text-sm resize-none"
                   />
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" className="gradient-primary" disabled={loading}>
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  <Button 
+                    type="submit" 
+                    className="gradient-primary" 
+                    size="sm"
+                    disabled={loading || !formData.appointmentTime || !hasSchedule}
+                  >
+                    {loading && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
                     Schedule
                   </Button>
                 </div>
@@ -320,12 +425,13 @@ export default function Appointments() {
 
       {/* Date Selection */}
       <Card className="glass-card">
-        <CardContent className="pt-6">
+        <CardContent className="py-3 px-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant={format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'}
               size="sm"
               onClick={() => setSelectedDate(new Date())}
+              className="text-xs h-8"
             >
               Today
             </Button>
@@ -333,14 +439,15 @@ export default function Appointments() {
               variant={format(selectedDate, 'yyyy-MM-dd') === format(addDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'}
               size="sm"
               onClick={() => setSelectedDate(addDays(new Date(), 1))}
+              className="text-xs h-8"
             >
               Tomorrow
             </Button>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <CalendarIcon className="w-4 h-4 mr-2" />
-                  {format(selectedDate, 'PPP')}
+                <Button variant="outline" size="sm" className="text-xs h-8">
+                  <CalendarIcon className="w-3 h-3 mr-1" />
+                  {format(selectedDate, 'PP')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
@@ -358,79 +465,85 @@ export default function Appointments() {
 
       {/* Appointments Table */}
       <Card className="glass-card">
-        <CardHeader>
-          <CardTitle>Appointments for {format(selectedDate, 'PPPP')}</CardTitle>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-medium">Appointments for {format(selectedDate, 'PPPP')}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="table-header">Time</TableHead>
-                <TableHead className="table-header">Patient</TableHead>
-                <TableHead className="table-header">Doctor</TableHead>
-                <TableHead className="table-header">Type</TableHead>
-                <TableHead className="table-header">Status</TableHead>
-                <TableHead className="table-header">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
+        <CardContent className="px-4 pb-4">
+          <div className="overflow-x-auto -mx-4 px-4">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    Loading appointments...
-                  </TableCell>
+                  <TableHead className="table-header text-xs">Time</TableHead>
+                  <TableHead className="table-header text-xs">Patient</TableHead>
+                  <TableHead className="table-header text-xs hidden sm:table-cell">Doctor</TableHead>
+                  <TableHead className="table-header text-xs hidden md:table-cell">Type</TableHead>
+                  <TableHead className="table-header text-xs">Status</TableHead>
+                  <TableHead className="table-header text-xs">Actions</TableHead>
                 </TableRow>
-              ) : appointments?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No appointments scheduled for this date
-                  </TableCell>
-                </TableRow>
-              ) : (
-                appointments?.map((apt) => (
-                  <TableRow key={apt.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        {apt.appointment_time?.slice(0, 5)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{apt.patient?.first_name} {apt.patient?.last_name}</p>
-                        <p className="text-xs text-muted-foreground">{apt.patient?.patient_number}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>Dr. {apt.doctor?.first_name} {apt.doctor?.last_name}</TableCell>
-                    <TableCell className="capitalize">{apt.type}</TableCell>
-                    <TableCell>{getStatusBadge(apt.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {apt.status === 'scheduled' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => updateStatus(apt.id, 'completed')}
-                            >
-                              Complete
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => updateStatus(apt.id, 'cancelled')}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        )}
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-sm">
+                      Loading appointments...
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : appointments?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-sm">
+                      No appointments scheduled for this date
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  appointments?.map((apt) => (
+                    <TableRow key={apt.id}>
+                      <TableCell className="font-medium text-sm py-2">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          {apt.appointment_time?.slice(0, 5)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div>
+                          <p className="font-medium text-sm">{apt.patient?.first_name} {apt.patient?.last_name}</p>
+                          <p className="text-xs text-muted-foreground">{apt.patient?.patient_number}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm py-2">
+                        Dr. {apt.doctor?.first_name} {apt.doctor?.last_name}
+                      </TableCell>
+                      <TableCell className="capitalize hidden md:table-cell text-sm py-2">{apt.type}</TableCell>
+                      <TableCell className="py-2">{getStatusBadge(apt.status)}</TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-1">
+                          {apt.status === 'scheduled' && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2"
+                                onClick={() => updateStatus(apt.id, 'completed')}
+                              >
+                                Complete
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2"
+                                onClick={() => updateStatus(apt.id, 'cancelled')}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
