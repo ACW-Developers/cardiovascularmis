@@ -125,8 +125,24 @@
     @apply border-border;
   }
 
+  html {
+    font-size: 14px;
+  }
+
+  @media (min-width: 640px) {
+    html {
+      font-size: 15px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    html {
+      font-size: 16px;
+    }
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased text-sm;
     font-family: 'Inter', system-ui, sans-serif;
   }
 
@@ -174,15 +190,15 @@
   }
 
   .page-header {
-    @apply flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8;
+    @apply flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4;
   }
 
   .page-title {
-    @apply text-2xl lg:text-3xl font-bold tracking-tight;
+    @apply text-xl lg:text-2xl font-bold tracking-tight;
   }
 
   .input-label {
-    @apply text-sm font-medium text-foreground/80 mb-1.5 block;
+    @apply text-xs font-medium text-foreground/80 mb-1 block;
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,7 +23,6 @@ import {
   BarChart3,
   BedDouble,
   Menu,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -55,6 +54,19 @@ const navItems: NavItem[] = [
   { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
 ];
 
+// Sidebar context for collapsed state
+interface SidebarContextValue {
+  collapsed: boolean;
+  setCollapsed: (value: boolean) => void;
+}
+
+const SidebarContext = createContext<SidebarContextValue>({
+  collapsed: false,
+  setCollapsed: () => {},
+});
+
+export const useSidebar = () => useContext(SidebarContext);
+
 // Mobile sidebar content
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { role } = useAuth();
@@ -68,20 +80,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center h-16 px-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center glow-primary">
-            <Heart className="w-5 h-5 text-primary-foreground" />
+      <div className="flex items-center h-14 px-3 border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center glow-primary">
+            <Heart className="w-4 h-4 text-primary-foreground" />
           </div>
-          <span className="font-display font-bold text-lg text-sidebar-foreground truncate">
+          <span className="font-display font-bold text-sm text-sidebar-foreground truncate">
             {settings?.site_name || 'CardioRegistry'}
           </span>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 px-3">
-        <ul className="space-y-1">
+      <nav className="flex-1 overflow-y-auto scrollbar-thin py-2 px-2">
+        <ul className="space-y-0.5">
           {filteredItems.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
@@ -92,11 +104,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   to={item.path}
                   onClick={onNavigate}
                   className={cn(
-                    'sidebar-item',
-                    isActive && 'sidebar-item-active'
+                    'flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-all duration-200',
+                    'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent',
+                    isActive && 'bg-sidebar-primary text-sidebar-primary-foreground shadow-md'
                   )}
                 >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  <item.icon className="w-4 h-4 flex-shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </NavLink>
               </li>
@@ -109,8 +122,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 // Desktop sidebar
-function DesktopSidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+function DesktopSidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed: (v: boolean) => void }) {
   const { role } = useAuth();
   const { settings } = useSettings();
   const location = useLocation();
@@ -124,35 +136,35 @@ function DesktopSidebar() {
       className={cn(
         'fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-in-out hidden md:flex',
         'bg-sidebar flex-col border-r border-sidebar-border',
-        collapsed ? 'w-20' : 'w-64'
+        collapsed ? 'w-14' : 'w-56'
       )}
       style={{ background: 'var(--gradient-sidebar)' }}
     >
       {/* Logo */}
       <div className={cn(
-        'flex items-center h-16 px-4 border-b border-sidebar-border',
+        'flex items-center h-14 px-3 border-b border-sidebar-border',
         collapsed ? 'justify-center' : 'justify-between'
       )}>
         {!collapsed && (
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center glow-primary">
-              <Heart className="w-5 h-5 text-primary-foreground" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center glow-primary">
+              <Heart className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg text-sidebar-foreground truncate">
+            <span className="font-display font-bold text-sm text-sidebar-foreground truncate">
               {settings?.site_name || 'CardioRegistry'}
             </span>
           </div>
         )}
         {collapsed && (
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center glow-primary">
-            <Heart className="w-5 h-5 text-primary-foreground" />
+          <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center glow-primary">
+            <Heart className="w-4 h-4 text-primary-foreground" />
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 px-3">
-        <ul className="space-y-1">
+      <nav className="flex-1 overflow-y-auto scrollbar-thin py-2 px-2">
+        <ul className="space-y-0.5">
           {filteredItems.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
@@ -161,11 +173,13 @@ function DesktopSidebar() {
               <NavLink
                 to={item.path}
                 className={cn(
-                  'sidebar-item',
-                  isActive && 'sidebar-item-active'
+                  'flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-all duration-200',
+                  'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent',
+                  isActive && 'bg-sidebar-primary text-sidebar-primary-foreground shadow-md',
+                  collapsed && 'justify-center px-0'
                 )}
               >
-                <item.icon className={cn('w-5 h-5 flex-shrink-0', collapsed && 'mx-auto')} />
+                <item.icon className="w-4 h-4 flex-shrink-0" />
                 {!collapsed && <span className="truncate">{item.label}</span>}
               </NavLink>
             );
@@ -177,7 +191,7 @@ function DesktopSidebar() {
                     <TooltipTrigger asChild>
                       {linkContent}
                     </TooltipTrigger>
-                    <TooltipContent side="right" className="font-medium">
+                    <TooltipContent side="right" className="text-xs">
                       {item.label}
                     </TooltipContent>
                   </Tooltip>
@@ -191,21 +205,21 @@ function DesktopSidebar() {
       </nav>
 
       {/* Collapse Button */}
-      <div className="p-3 border-t border-sidebar-border">
+      <div className="p-2 border-t border-sidebar-border">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            'w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent',
+            'w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent h-8 text-xs',
             collapsed && 'px-0 justify-center'
           )}
         >
           {collapsed ? (
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4" />
           ) : (
             <>
-              <ChevronLeft className="w-5 h-5 mr-2" />
+              <ChevronLeft className="w-4 h-4 mr-1" />
               Collapse
             </>
           )}
@@ -220,7 +234,6 @@ export function MobileSidebarTrigger() {
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  // Close sidebar on route change
   const location = useLocation();
   useEffect(() => {
     setOpen(false);
@@ -234,15 +247,15 @@ export function MobileSidebarTrigger() {
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden"
+          className="md:hidden h-8 w-8"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-4 h-4" />
           <span className="sr-only">Toggle menu</span>
         </Button>
       </SheetTrigger>
       <SheetContent 
         side="left" 
-        className="p-0 w-72 bg-sidebar border-sidebar-border"
+        className="p-0 w-64 bg-sidebar border-sidebar-border"
         style={{ background: 'var(--gradient-sidebar)' }}
       >
         <SheetHeader className="sr-only">
@@ -255,5 +268,13 @@ export function MobileSidebarTrigger() {
 }
 
 export function Sidebar() {
-  return <DesktopSidebar />;
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+      <DesktopSidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+    </SidebarContext.Provider>
+  );
 }
+
+export { SidebarContext };
