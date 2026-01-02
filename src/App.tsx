@@ -26,6 +26,7 @@ import FollowUps from "./pages/FollowUps";
 import UserManagement from "./pages/UserManagement";
 import Settings from "./pages/Settings";
 import Reports from "./pages/Reports";
+import DoctorPatients from "./pages/DoctorPatients";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +55,9 @@ const App = () => (
                     <ProtectedRoute allowedRoles={['admin', 'nurse']}><Vitals /></ProtectedRoute>
                   } />
                   <Route path="/appointments" element={<Appointments />} />
+                  <Route path="/doctor/patients" element={
+                    <ProtectedRoute allowedRoles={['doctor']}><DoctorPatients /></ProtectedRoute>
+                  } />
                   <Route path="/lab/orders" element={<LabOrders />} />
                   <Route path="/lab/results" element={
                     <ProtectedRoute allowedRoles={['admin', 'lab_technician']}><LabResults /></ProtectedRoute>
