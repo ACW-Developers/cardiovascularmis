@@ -1,0 +1,295 @@
+import { useAuth } from '@/contexts/AuthContext';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { 
+  Users, 
+  Calendar, 
+  FlaskConical, 
+  Pill, 
+  Syringe, 
+  BedDouble,
+  Activity,
+  TrendingUp,
+  Clock,
+  Heart
+} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+
+const COLORS = ['hsl(199, 89%, 48%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(280, 68%, 60%)', 'hsl(0, 72%, 51%)'];
+
+export default function Dashboard() {
+  const { profile, role } = useAuth();
+
+  // Fetch dashboard stats
+  const { data: stats } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const [patients, appointments, labTests, prescriptions, surgeries, icuAdmissions] = await Promise.all([
+        supabase.from('patients').select('id', { count: 'exact' }),
+        supabase.from('appointments').select('id', { count: 'exact' }).eq('appointment_date', today),
+        supabase.from('lab_tests').select('id', { count: 'exact' }).eq('status', 'pending'),
+        supabase.from('prescriptions').select('id', { count: 'exact' }).eq('status', 'pending'),
+        supabase.from('surgeries').select('id', { count: 'exact' }).eq('scheduled_date', today),
+        supabase.from('icu_admissions').select('id', { count: 'exact' }).eq('status', 'admitted'),
+      ]);
+
+      return {
+        totalPatients: patients.count || 0,
+        todayAppointments: appointments.count || 0,
+        pendingLabTests: labTests.count || 0,
+        pendingPrescriptions: prescriptions.count || 0,
+        todaySurgeries: surgeries.count || 0,
+        icuOccupancy: icuAdmissions.count || 0,
+      };
+    },
+  });
+
+  // Sample chart data (would be fetched from DB in production)
+  const weeklyPatients = [
+    { day: 'Mon', patients: 12 },
+    { day: 'Tue', patients: 19 },
+    { day: 'Wed', patients: 15 },
+    { day: 'Thu', patients: 22 },
+    { day: 'Fri', patients: 18 },
+    { day: 'Sat', patients: 8 },
+    { day: 'Sun', patients: 5 },
+  ];
+
+  const departmentData = [
+    { name: 'Cardiology', value: 45 },
+    { name: 'ICU', value: 15 },
+    { name: 'Surgery', value: 25 },
+    { name: 'Recovery', value: 15 },
+  ];
+
+  const statCards = [
+    { 
+      title: 'Total Patients', 
+      value: stats?.totalPatients || 0, 
+      icon: Users, 
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
+      roles: ['admin', 'nurse', 'doctor'] 
+    },
+    { 
+      title: "Today's Appointments", 
+      value: stats?.todayAppointments || 0, 
+      icon: Calendar, 
+      color: 'text-success',
+      bgColor: 'bg-success/10',
+      roles: ['admin', 'nurse', 'doctor'] 
+    },
+    { 
+      title: 'Pending Lab Tests', 
+      value: stats?.pendingLabTests || 0, 
+      icon: FlaskConical, 
+      color: 'text-warning',
+      bgColor: 'bg-warning/10',
+      roles: ['admin', 'doctor', 'lab_technician'] 
+    },
+    { 
+      title: 'Pending Prescriptions', 
+      value: stats?.pendingPrescriptions || 0, 
+      icon: Pill, 
+      color: 'text-info',
+      bgColor: 'bg-info/10',
+      roles: ['admin', 'pharmacist', 'doctor'] 
+    },
+    { 
+      title: "Today's Surgeries", 
+      value: stats?.todaySurgeries || 0, 
+      icon: Syringe, 
+      color: 'text-destructive',
+      bgColor: 'bg-destructive/10',
+      roles: ['admin', 'doctor', 'nurse'] 
+    },
+    { 
+      title: 'ICU Occupancy', 
+      value: stats?.icuOccupancy || 0, 
+      icon: BedDouble, 
+      color: 'text-chart-4',
+      bgColor: 'bg-purple-500/10',
+      roles: ['admin', 'doctor', 'nurse'] 
+    },
+  ];
+
+  const filteredStats = statCards.filter(card => 
+    role && card.roles.includes(role)
+  );
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      {/* Page Header */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">
+            Overview of your cardiovascular patient registry
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="w-4 h-4" />
+          {new Date().toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })}
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredStats.map((stat) => (
+          <Card key={stat.title} className="stat-card">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                  <p className="text-3xl font-bold font-display mt-2">{stat.value}</p>
+                </div>
+                <div className={`p-3 rounded-xl ${stat.bgColor}`}>
+                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Patient Admissions Chart */}
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Weekly Patient Admissions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyPatients}>
+                  <defs>
+                    <linearGradient id="patientGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="day" className="text-muted-foreground" />
+                  <YAxis className="text-muted-foreground" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="patients" 
+                    stroke="hsl(199, 89%, 48%)" 
+                    strokeWidth={2}
+                    fill="url(#patientGradient)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Department Distribution */}
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              Department Distribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={departmentData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {departmentData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-wrap justify-center gap-4 mt-4">
+              {departmentData.map((item, index) => (
+                <div key={item.name} className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  />
+                  <span className="text-sm text-muted-foreground">{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Heart className="w-5 h-5 text-primary" />
+            Quick Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {role && ['admin', 'nurse'].includes(role) && (
+              <a href="/patients/register" className="p-4 rounded-xl bg-primary/5 hover:bg-primary/10 transition-colors text-center group">
+                <Users className="w-8 h-8 text-primary mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium">Register Patient</span>
+              </a>
+            )}
+            {role && ['admin', 'nurse'].includes(role) && (
+              <a href="/vitals" className="p-4 rounded-xl bg-success/5 hover:bg-success/10 transition-colors text-center group">
+                <Activity className="w-8 h-8 text-success mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium">Record Vitals</span>
+              </a>
+            )}
+            {role && ['admin', 'doctor'].includes(role) && (
+              <a href="/lab/orders" className="p-4 rounded-xl bg-warning/5 hover:bg-warning/10 transition-colors text-center group">
+                <FlaskConical className="w-8 h-8 text-warning mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium">Order Lab Test</span>
+              </a>
+            )}
+            {role && ['admin', 'doctor'].includes(role) && (
+              <a href="/prescriptions" className="p-4 rounded-xl bg-info/5 hover:bg-info/10 transition-colors text-center group">
+                <Pill className="w-8 h-8 text-info mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium">Write Prescription</span>
+              </a>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
