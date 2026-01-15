@@ -21,8 +21,9 @@ import { format, differenceInYears } from 'date-fns';
 import { 
   Stethoscope, Search, ClipboardList, FlaskConical, 
   FileText, Activity, Pill, Syringe, AlertTriangle,
-  CheckCircle, Clock, User, Calendar
+  CheckCircle, Clock, User, Calendar, TrendingUp
 } from 'lucide-react';
+import { VitalsTrendChart } from '@/components/charts/VitalsTrendChart';
 import type { Patient, Appointment, Vitals, LabTest, LabResult } from '@/types/database';
 
 const labTestTypes = [
@@ -145,7 +146,7 @@ export default function DoctorConsultationPage() {
     enabled: !!user?.id,
   });
 
-  // Fetch patient vitals for selected appointment
+  // Fetch ALL patient vitals for selected appointment (no limit for trend charts)
   const { data: patientVitals } = useQuery({
     queryKey: ['patient-vitals', selectedAppointment?.patient_id],
     queryFn: async () => {
@@ -154,15 +155,14 @@ export default function DoctorConsultationPage() {
         .from('vitals')
         .select('*')
         .eq('patient_id', selectedAppointment.patient_id)
-        .order('recorded_at', { ascending: false })
-        .limit(5);
+        .order('recorded_at', { ascending: false });
       if (error) throw error;
       return data as Vitals[];
     },
     enabled: !!selectedAppointment?.patient_id,
   });
 
-  // Fetch patient lab tests and results
+  // Fetch ALL patient lab tests and results (no limit)
   const { data: patientLabTests } = useQuery({
     queryKey: ['patient-lab-tests', selectedAppointment?.patient_id],
     queryFn: async () => {
@@ -171,8 +171,7 @@ export default function DoctorConsultationPage() {
         .from('lab_tests')
         .select('*, lab_results(*)')
         .eq('patient_id', selectedAppointment.patient_id)
-        .order('ordered_at', { ascending: false })
-        .limit(10);
+        .order('ordered_at', { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -581,42 +580,57 @@ export default function DoctorConsultationPage() {
                     No vitals recorded for this patient
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>BP</TableHead>
-                        <TableHead>HR</TableHead>
-                        <TableHead>SpO2</TableHead>
-                        <TableHead>Temp</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {patientVitals?.map((v) => (
-                        <TableRow key={v.id}>
-                          <TableCell>{format(new Date(v.recorded_at), 'MMM d, yyyy HH:mm')}</TableCell>
-                          <TableCell>
-                            <span className={v.systolic_bp > 140 || v.diastolic_bp > 90 ? 'text-destructive font-medium' : ''}>
-                              {v.systolic_bp}/{v.diastolic_bp}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className={v.heart_rate > 100 || v.heart_rate < 60 ? 'text-warning font-medium' : ''}>
-                              {v.heart_rate}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className={v.oxygen_saturation && v.oxygen_saturation < 95 ? 'text-destructive font-medium' : ''}>
-                              {v.oxygen_saturation || '-'}%
-                            </span>
-                          </TableCell>
-                          <TableCell>{v.temperature || '-'}°C</TableCell>
-                          <TableCell className="max-w-[200px] truncate">{v.notes || '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="space-y-6">
+                    {/* Trend Charts */}
+                    <div>
+                      <h4 className="text-sm font-medium flex items-center gap-2 mb-3">
+                        <TrendingUp className="h-4 w-4" />
+                        Vital Signs Trends
+                      </h4>
+                      <VitalsTrendChart vitals={patientVitals || []} />
+                    </div>
+                    
+                    {/* Vitals Table */}
+                    <div>
+                      <h4 className="text-sm font-medium mb-3">Recent Readings</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>BP</TableHead>
+                            <TableHead>HR</TableHead>
+                            <TableHead>SpO2</TableHead>
+                            <TableHead>Temp</TableHead>
+                            <TableHead>Notes</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {patientVitals?.slice(0, 10).map((v) => (
+                            <TableRow key={v.id}>
+                              <TableCell>{format(new Date(v.recorded_at), 'MMM d, yyyy HH:mm')}</TableCell>
+                              <TableCell>
+                                <span className={v.systolic_bp > 140 || v.diastolic_bp > 90 ? 'text-destructive font-medium' : ''}>
+                                  {v.systolic_bp}/{v.diastolic_bp}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className={v.heart_rate > 100 || v.heart_rate < 60 ? 'text-warning font-medium' : ''}>
+                                  {v.heart_rate}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className={v.oxygen_saturation && v.oxygen_saturation < 95 ? 'text-destructive font-medium' : ''}>
+                                  {v.oxygen_saturation || '-'}%
+                                </span>
+                              </TableCell>
+                              <TableCell>{v.temperature || '-'}°C</TableCell>
+                              <TableCell className="max-w-[200px] truncate">{v.notes || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 )}
               </TabsContent>
 
