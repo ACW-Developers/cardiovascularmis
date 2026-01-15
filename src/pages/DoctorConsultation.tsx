@@ -489,77 +489,91 @@ export default function DoctorConsultationPage() {
               Patient Consultation - {selectedAppointment?.patient?.first_name} {selectedAppointment?.patient?.last_name}
             </DialogTitle>
           </DialogHeader>
+
+          {/* Patient Summary Panel - Always Visible */}
+          {selectedAppointment?.patient && (
+            <div className="bg-muted/50 rounded-lg p-4 border space-y-3">
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Patient #:</span>
+                  <span className="font-medium">{selectedAppointment.patient.patient_number}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Age:</span>
+                  <span className="font-medium">{differenceInYears(new Date(), new Date(selectedAppointment.patient.date_of_birth))} yrs</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Gender:</span>
+                  <span className="font-medium capitalize">{selectedAppointment.patient.gender}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Blood Type:</span>
+                  <span className="font-medium">{selectedAppointment.patient.blood_type || 'Unknown'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Emergency:</span>
+                  <span className="font-medium">{selectedAppointment.patient.emergency_contact_name || 'N/A'} ({selectedAppointment.patient.emergency_contact_phone || 'N/A'})</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Allergies - Critical */}
+                <div className="bg-destructive/10 rounded-md p-2 border border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                    <span className="text-xs font-semibold text-destructive">ALLERGIES</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedAppointment.patient.allergies?.length > 0 ? 
+                      selectedAppointment.patient.allergies.map((a: string, i: number) => (
+                        <Badge key={i} variant="destructive" className="text-xs">{a}</Badge>
+                      )) : <span className="text-xs text-muted-foreground">None reported</span>
+                    }
+                  </div>
+                </div>
+
+                {/* Chronic Conditions */}
+                <div className="bg-warning/10 rounded-md p-2 border border-warning/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity className="h-4 w-4 text-warning" />
+                    <span className="text-xs font-semibold text-warning">CHRONIC CONDITIONS</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedAppointment.patient.chronic_conditions?.length > 0 ? 
+                      selectedAppointment.patient.chronic_conditions.map((c: string, i: number) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
+                      )) : <span className="text-xs text-muted-foreground">None reported</span>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Medications & Medical History Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground font-medium">Current Medications:</span>
+                  <p className="mt-0.5">{selectedAppointment.patient.current_medications || 'None reported'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground font-medium">Cardiovascular History:</span>
+                  <p className="mt-0.5">{selectedAppointment.patient.cardiovascular_history || 'None reported'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground font-medium">Previous Surgeries:</span>
+                  <p className="mt-0.5">{selectedAppointment.patient.previous_surgeries || 'None reported'}</p>
+                </div>
+              </div>
+            </div>
+          )}
           
-          <Tabs defaultValue="records" className="flex-1 overflow-hidden">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="records">Patient Records</TabsTrigger>
+          <Tabs defaultValue="vitals" className="flex-1 overflow-hidden">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="vitals">Vitals History</TabsTrigger>
               <TabsTrigger value="labs">Lab Results</TabsTrigger>
               <TabsTrigger value="analysis">Analysis</TabsTrigger>
             </TabsList>
 
-            <ScrollArea className="flex-1 mt-4 h-[500px]">
-              <TabsContent value="records" className="space-y-4 pr-4">
-                {selectedAppointment?.patient && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Demographics</CardTitle>
-                      </CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p><span className="text-muted-foreground">Patient #:</span> {selectedAppointment.patient.patient_number}</p>
-                        <p><span className="text-muted-foreground">Age:</span> {differenceInYears(new Date(), new Date(selectedAppointment.patient.date_of_birth))} years</p>
-                        <p><span className="text-muted-foreground">Gender:</span> {selectedAppointment.patient.gender}</p>
-                        <p><span className="text-muted-foreground">Blood Type:</span> {selectedAppointment.patient.blood_type || 'Unknown'}</p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Contact</CardTitle>
-                      </CardHeader>
-                      <CardContent className="text-sm space-y-1">
-                        <p><span className="text-muted-foreground">Phone:</span> {selectedAppointment.patient.phone}</p>
-                        <p><span className="text-muted-foreground">Email:</span> {selectedAppointment.patient.email || 'N/A'}</p>
-                        <p><span className="text-muted-foreground">Emergency:</span> {selectedAppointment.patient.emergency_contact_name || 'N/A'}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="col-span-2">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-warning" />
-                          Medical History
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="text-sm space-y-2">
-                        <div>
-                          <span className="text-muted-foreground">Allergies:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {selectedAppointment.patient.allergies?.length > 0 ? 
-                              selectedAppointment.patient.allergies.map((a: string, i: number) => (
-                                <Badge key={i} variant="destructive" className="text-xs">{a}</Badge>
-                              )) : <span className="text-muted-foreground">None reported</span>
-                            }
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Chronic Conditions:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {selectedAppointment.patient.chronic_conditions?.length > 0 ? 
-                              selectedAppointment.patient.chronic_conditions.map((c: string, i: number) => (
-                                <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
-                              )) : <span className="text-muted-foreground">None reported</span>
-                            }
-                          </div>
-                        </div>
-                        <p><span className="text-muted-foreground">Cardiovascular History:</span> {selectedAppointment.patient.cardiovascular_history || 'None reported'}</p>
-                        <p><span className="text-muted-foreground">Previous Surgeries:</span> {selectedAppointment.patient.previous_surgeries || 'None reported'}</p>
-                        <p><span className="text-muted-foreground">Current Medications:</span> {selectedAppointment.patient.current_medications || 'None reported'}</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-              </TabsContent>
-
+            <ScrollArea className="flex-1 mt-4 h-[350px]">
               <TabsContent value="vitals" className="space-y-4 pr-4">
                 {patientVitals?.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
