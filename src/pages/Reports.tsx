@@ -6,32 +6,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { FileText, Download, Users, Activity, FlaskConical, Pill, Syringe, BarChart3 } from 'lucide-react';
+import { format, differenceInYears, subDays, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { 
+  FileText, Download, Users, Activity, FlaskConical, Pill, Syringe, BarChart3, 
+  TrendingUp, TrendingDown, AlertTriangle, Heart, BedDouble, Calendar,
+  PieChart, LineChart, Lightbulb
+} from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Patient, Vitals, LabTest, Prescription, Surgery } from '@/types/database';
 
-type ReportType = 'patients' | 'vitals' | 'lab_tests' | 'prescriptions' | 'surgeries' | 'appointments' | 'icu' | 'summary';
+type ReportType = 'patients' | 'vitals' | 'lab_tests' | 'prescriptions' | 'surgeries' | 'appointments' | 'icu' | 'summary' | 'research';
 
-const reportTypes: { value: ReportType; label: string; icon: React.ElementType; description: string }[] = [
+const reportTypes: { value: ReportType; label: string; icon: React.ElementType; description: string; featured?: boolean }[] = [
+  { value: 'research', label: 'Research Report', icon: Lightbulb, description: 'Data insights & analytics summary', featured: true },
+  { value: 'summary', label: 'Executive Summary', icon: BarChart3, description: 'Overall system statistics' },
   { value: 'patients', label: 'Patient Registry', icon: Users, description: 'List of all registered patients' },
   { value: 'vitals', label: 'Vitals Report', icon: Activity, description: 'Patient vitals records' },
   { value: 'lab_tests', label: 'Lab Tests Report', icon: FlaskConical, description: 'Laboratory test orders and results' },
   { value: 'prescriptions', label: 'Prescriptions Report', icon: Pill, description: 'Prescription records' },
   { value: 'surgeries', label: 'Surgeries Report', icon: Syringe, description: 'Surgical procedures log' },
-  { value: 'appointments', label: 'Appointments Report', icon: Users, description: 'Appointment schedules' },
-  { value: 'icu', label: 'ICU Report', icon: Activity, description: 'ICU admissions and progress' },
-  { value: 'summary', label: 'Summary Report', icon: BarChart3, description: 'Overall system statistics' },
+  { value: 'appointments', label: 'Appointments Report', icon: Calendar, description: 'Appointment schedules' },
+  { value: 'icu', label: 'ICU Report', icon: BedDouble, description: 'ICU admissions and progress' },
 ];
 
 export default function Reports() {
   const { settings } = useSettings();
-  const [selectedReport, setSelectedReport] = useState<ReportType>('patients');
-  const [startDate, setStartDate] = useState<string>(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedReport, setSelectedReport] = useState<ReportType>('research');
+  const [startDate, setStartDate] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [generating, setGenerating] = useState(false);
 
   const { data: patients } = useQuery({
@@ -48,7 +54,7 @@ export default function Reports() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('vitals')
-        .select('*, patient:patients(first_name, last_name, patient_number)')
+        .select('*, patient:patients(first_name, last_name, patient_number, date_of_birth, gender)')
         .gte('recorded_at', startDate)
         .lte('recorded_at', endDate + 'T23:59:59')
         .order('recorded_at', { ascending: false });
@@ -66,6 +72,19 @@ export default function Reports() {
         .gte('ordered_at', startDate)
         .lte('ordered_at', endDate + 'T23:59:59')
         .order('ordered_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: labResults } = useQuery({
+    queryKey: ['all-lab-results', startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lab_results')
+        .select('*')
+        .gte('entered_at', startDate)
+        .lte('entered_at', endDate + 'T23:59:59');
       if (error) throw error;
       return data;
     },
@@ -127,6 +146,114 @@ export default function Reports() {
     },
   });
 
+  // Calculate research insights
+  const calculateInsights = () => {
+    const insights: { label: string; value: string | number; trend?: 'up' | 'down' | 'neutral'; detail?: string }[] = [];
+    
+    // Demographics
+    if (patients) {
+      const avgAge = patients.length > 0 
+        ? Math.round(patients.reduce((sum, p) => sum + differenceInYears(new Date(), new Date(p.date_of_birth)), 0) / patients.length)
+        : 0;
+      const maleCount = patients.filter(p => p.gender?.toLowerCase() === 'male').length;
+      const femaleCount = patients.filter(p => p.gender?.toLowerCase() === 'female').length;
+      
+      insights.push({ label: 'Average Patient Age', value: `${avgAge} years`, detail: `Range: various ages` });
+      insights.push({ label: 'Gender Distribution', value: `${maleCount}M / ${femaleCount}F`, detail: `${((maleCount / patients.length) * 100).toFixed(1)}% male` });
+      
+      const withAllergies = patients.filter(p => p.allergies && p.allergies.length > 0).length;
+      insights.push({ label: 'Patients with Allergies', value: `${withAllergies}`, detail: `${((withAllergies / patients.length) * 100).toFixed(1)}% of patients` });
+      
+      const withChronic = patients.filter(p => p.chronic_conditions && p.chronic_conditions.length > 0).length;
+      insights.push({ label: 'Chronic Conditions', value: `${withChronic}`, detail: `${((withChronic / patients.length) * 100).toFixed(1)}% of patients` });
+    }
+
+    // Vitals analysis
+    if (vitals && vitals.length > 0) {
+      const avgSystolic = Math.round(vitals.reduce((sum, v) => sum + v.systolic_bp, 0) / vitals.length);
+      const avgDiastolic = Math.round(vitals.reduce((sum, v) => sum + v.diastolic_bp, 0) / vitals.length);
+      const avgHR = Math.round(vitals.reduce((sum, v) => sum + v.heart_rate, 0) / vitals.length);
+      
+      insights.push({ 
+        label: 'Avg Blood Pressure', 
+        value: `${avgSystolic}/${avgDiastolic}`, 
+        trend: avgSystolic > 140 ? 'up' : avgSystolic < 90 ? 'down' : 'neutral',
+        detail: 'mmHg'
+      });
+      insights.push({ 
+        label: 'Avg Heart Rate', 
+        value: `${avgHR} bpm`, 
+        trend: avgHR > 100 ? 'up' : avgHR < 60 ? 'down' : 'neutral',
+        detail: 'beats per minute'
+      });
+
+      const criticalVitals = vitals.filter(v => 
+        v.systolic_bp > 180 || v.systolic_bp < 90 || 
+        v.heart_rate > 120 || v.heart_rate < 50 ||
+        (v.oxygen_saturation && v.oxygen_saturation < 92)
+      ).length;
+      insights.push({ 
+        label: 'Critical Vitals Recorded', 
+        value: criticalVitals, 
+        trend: criticalVitals > 5 ? 'up' : 'neutral',
+        detail: `${((criticalVitals / vitals.length) * 100).toFixed(1)}% of readings`
+      });
+    }
+
+    // Lab analysis
+    if (labResults && labResults.length > 0) {
+      const abnormalResults = labResults.filter(r => r.is_abnormal).length;
+      insights.push({ 
+        label: 'Abnormal Lab Results', 
+        value: abnormalResults, 
+        trend: abnormalResults > 10 ? 'up' : 'neutral',
+        detail: `${((abnormalResults / labResults.length) * 100).toFixed(1)}% of results`
+      });
+    }
+
+    if (labTests && labTests.length > 0) {
+      const completedTests = labTests.filter((t: any) => t.status === 'completed').length;
+      const completionRate = ((completedTests / labTests.length) * 100).toFixed(1);
+      insights.push({ 
+        label: 'Lab Test Completion Rate', 
+        value: `${completionRate}%`, 
+        trend: parseFloat(completionRate) > 80 ? 'neutral' : 'down',
+        detail: `${completedTests} of ${labTests.length} completed`
+      });
+    }
+
+    // Surgery analysis
+    if (surgeries && surgeries.length > 0) {
+      const completedSurgeries = surgeries.filter((s: any) => s.status === 'completed').length;
+      insights.push({ 
+        label: 'Surgeries Completed', 
+        value: completedSurgeries, 
+        detail: `${((completedSurgeries / surgeries.length) * 100).toFixed(1)}% completion rate`
+      });
+      
+      const cardiacSurgeries = surgeries.filter((s: any) => s.surgery_type === 'cardiac').length;
+      insights.push({ 
+        label: 'Cardiac Procedures', 
+        value: cardiacSurgeries, 
+        detail: `${((cardiacSurgeries / surgeries.length) * 100).toFixed(1)}% of surgeries`
+      });
+    }
+
+    // Prescription analysis
+    if (prescriptions && prescriptions.length > 0) {
+      const dispensed = prescriptions.filter((p: any) => p.status === 'dispensed').length;
+      insights.push({ 
+        label: 'Prescriptions Dispensed', 
+        value: dispensed, 
+        detail: `${((dispensed / prescriptions.length) * 100).toFixed(1)}% dispensing rate`
+      });
+    }
+
+    return insights;
+  };
+
+  const insights = calculateInsights();
+
   const generatePDF = async () => {
     setGenerating(true);
     try {
@@ -134,23 +261,111 @@ export default function Reports() {
       const siteName = settings?.site_name || 'CardioRegistry';
       const pageWidth = doc.internal.pageSize.getWidth();
 
-      // Header
-      doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.text(siteName, pageWidth / 2, 20, { align: 'center' });
+      // Header with branding
+      doc.setFillColor(220, 38, 38);
+      doc.rect(0, 0, pageWidth, 35, 'F');
       
-      doc.setFontSize(14);
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(siteName, pageWidth / 2, 15, { align: 'center' });
+      
+      doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
       const reportConfig = reportTypes.find((r) => r.value === selectedReport);
-      doc.text(reportConfig?.label || 'Report', pageWidth / 2, 30, { align: 'center' });
+      doc.text(reportConfig?.label || 'Report', pageWidth / 2, 24, { align: 'center' });
       
-      doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(), 'MMM d, yyyy HH:mm')}`, pageWidth / 2, 38, { align: 'center' });
-      doc.text(`Period: ${format(new Date(startDate), 'MMM d, yyyy')} - ${format(new Date(endDate), 'MMM d, yyyy')}`, pageWidth / 2, 44, { align: 'center' });
+      doc.setFontSize(9);
+      doc.text(`Generated: ${format(new Date(), 'MMMM d, yyyy HH:mm')} | Period: ${format(new Date(startDate), 'MMM d')} - ${format(new Date(endDate), 'MMM d, yyyy')}`, pageWidth / 2, 31, { align: 'center' });
 
-      let startY = 55;
+      doc.setTextColor(0, 0, 0);
+      let startY = 45;
 
       switch (selectedReport) {
+        case 'research':
+          // Research Report with insights
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Executive Insights & Analytics', 14, startY);
+          startY += 10;
+
+          // Key Metrics Section
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.setFillColor(245, 245, 245);
+          doc.rect(14, startY, pageWidth - 28, 8, 'F');
+          doc.text('Key Performance Indicators', 16, startY + 6);
+          startY += 12;
+
+          const metricsData = [
+            ['Total Patients', String(patients?.length || 0), 'Active: ' + String(patients?.filter(p => p.status === 'active').length || 0)],
+            ['Vitals Recorded', String(vitals?.length || 0), 'This period'],
+            ['Lab Tests', String(labTests?.length || 0), 'Completed: ' + String(labTests?.filter((t: any) => t.status === 'completed').length || 0)],
+            ['Prescriptions', String(prescriptions?.length || 0), 'Dispensed: ' + String(prescriptions?.filter((p: any) => p.status === 'dispensed').length || 0)],
+            ['Surgeries', String(surgeries?.length || 0), 'Completed: ' + String(surgeries?.filter((s: any) => s.status === 'completed').length || 0)],
+            ['ICU Admissions', String(icuAdmissions?.length || 0), 'This period'],
+          ];
+
+          autoTable(doc, {
+            startY,
+            head: [['Metric', 'Value', 'Detail']],
+            body: metricsData,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255] },
+            alternateRowStyles: { fillColor: [250, 250, 250] },
+          });
+
+          startY = (doc as any).lastAutoTable.finalY + 15;
+
+          // Insights Section
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.setFillColor(245, 245, 245);
+          doc.rect(14, startY, pageWidth - 28, 8, 'F');
+          doc.text('Clinical Insights & Trends', 16, startY + 6);
+          startY += 12;
+
+          const insightsData = insights.map(i => [
+            i.label, 
+            String(i.value), 
+            i.detail || '', 
+            i.trend === 'up' ? '↑' : i.trend === 'down' ? '↓' : '→'
+          ]);
+
+          autoTable(doc, {
+            startY,
+            head: [['Metric', 'Value', 'Detail', 'Trend']],
+            body: insightsData,
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [59, 130, 246], textColor: [255, 255, 255] },
+            alternateRowStyles: { fillColor: [250, 250, 250] },
+            columnStyles: { 3: { halign: 'center', fontStyle: 'bold' } },
+          });
+
+          startY = (doc as any).lastAutoTable.finalY + 15;
+
+          // Recommendations
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'bold');
+          doc.setFillColor(245, 245, 245);
+          doc.rect(14, startY, pageWidth - 28, 8, 'F');
+          doc.text('Recommendations', 16, startY + 6);
+          startY += 12;
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          const recommendations = [
+            '• Monitor patients with critical vitals readings closely',
+            '• Follow up on pending lab tests to improve completion rates',
+            '• Review abnormal lab results with attending physicians',
+            '• Ensure timely prescription dispensing for pending medications',
+            '• Schedule regular follow-ups for post-surgical patients',
+          ];
+          recommendations.forEach((rec, idx) => {
+            doc.text(rec, 16, startY + (idx * 6));
+          });
+          break;
+
         case 'patients':
           autoTable(doc, {
             startY,
@@ -305,7 +520,7 @@ export default function Reports() {
         doc.setFontSize(8);
         doc.setTextColor(128);
         doc.text(
-          `${siteName} - Page ${i} of ${pageCount}`,
+          `${siteName} | Confidential Medical Report | Page ${i} of ${pageCount}`,
           pageWidth / 2,
           doc.internal.pageSize.getHeight() - 10,
           { align: 'center' }
@@ -325,20 +540,61 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-display font-bold text-foreground">Reports</h1>
-        <p className="text-muted-foreground">Generate and download clinical reports</p>
+        <h1 className="text-3xl font-display font-bold text-foreground">Reports & Analytics</h1>
+        <p className="text-muted-foreground">Generate clinical reports and research insights</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Featured Report */}
+          <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Lightbulb className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Research Report</CardTitle>
+                  <CardDescription>Data insights, trends, and clinical analytics</CardDescription>
+                </div>
+                <Badge className="ml-auto">Featured</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {insights.slice(0, 4).map((insight, idx) => (
+                  <div key={idx} className="p-3 rounded-lg bg-background border">
+                    <div className="flex items-center gap-2 mb-1">
+                      {insight.trend === 'up' && <TrendingUp className="h-3 w-3 text-destructive" />}
+                      {insight.trend === 'down' && <TrendingDown className="h-3 w-3 text-amber-500" />}
+                      {insight.trend === 'neutral' && <Heart className="h-3 w-3 text-green-500" />}
+                      <span className="text-xs text-muted-foreground truncate">{insight.label}</span>
+                    </div>
+                    <div className="text-lg font-bold">{insight.value}</div>
+                    {insight.detail && <div className="text-xs text-muted-foreground">{insight.detail}</div>}
+                  </div>
+                ))}
+              </div>
+              <Button 
+                className="w-full mt-4 gradient-primary" 
+                onClick={() => { setSelectedReport('research'); generatePDF(); }}
+                disabled={generating}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {generating && selectedReport === 'research' ? 'Generating...' : 'Generate Research Report'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Other Reports */}
           <Card>
             <CardHeader>
-              <CardTitle>Select Report Type</CardTitle>
+              <CardTitle>Standard Reports</CardTitle>
               <CardDescription>Choose the type of report to generate</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {reportTypes.map((report) => {
+                {reportTypes.filter(r => !r.featured).map((report) => {
                   const Icon = report.icon;
                   const isSelected = selectedReport === report.value;
                   return (
@@ -351,8 +607,8 @@ export default function Reports() {
                           : 'border-border hover:border-primary/50 hover:bg-muted/50'
                       }`}
                     >
-                      <Icon className={`h-6 w-6 mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <div className="font-medium">{report.label}</div>
+                      <Icon className={`h-5 w-5 mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <div className="font-medium text-sm">{report.label}</div>
                       <div className="text-xs text-muted-foreground">{report.description}</div>
                     </button>
                   );
@@ -362,7 +618,7 @@ export default function Reports() {
           </Card>
         </div>
 
-        <div>
+        <div className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Report Options</CardTitle>
@@ -395,46 +651,58 @@ export default function Reports() {
               </Button>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Stats</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Total Patients</span>
+                </div>
+                <span className="font-bold">{patients?.length || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Vitals (Period)</span>
+                </div>
+                <span className="font-bold">{vitals?.length || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Lab Tests (Period)</span>
+                </div>
+                <span className="font-bold">{labTests?.length || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Pill className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Prescriptions (Period)</span>
+                </div>
+                <span className="font-bold">{prescriptions?.length || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Syringe className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Surgeries (Period)</span>
+                </div>
+                <span className="font-bold">{surgeries?.length || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <BedDouble className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">ICU (Period)</span>
+                </div>
+                <span className="font-bold">{icuAdmissions?.length || 0}</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Stats</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{patients?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Total Patients</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{vitals?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Vitals (Period)</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{labTests?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Lab Tests (Period)</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{prescriptions?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Prescriptions (Period)</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{surgeries?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Surgeries (Period)</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{appointments?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Appointments (Period)</div>
-            </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{icuAdmissions?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">ICU (Period)</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
