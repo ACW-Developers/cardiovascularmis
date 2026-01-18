@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Plus, FlaskConical, Search, Eye, ClipboardCheck } from 'lucide-react';
+import { Plus, FlaskConical, Search, Eye, ClipboardCheck, Edit, Trash2 } from 'lucide-react';
 import type { LabTest, Patient } from '@/types/database';
 import { notifyLabTechnicians } from '@/lib/notifications';
 
@@ -30,11 +31,15 @@ export default function LabOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTest, setEditingTest] = useState<LabTest | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<string>('');
   const [selectedTestType, setSelectedTestType] = useState<string>('');
   const [selectedTest, setSelectedTest] = useState<string>('');
   const [priority, setPriority] = useState<string>('routine');
   const [notes, setNotes] = useState('');
+
+  const isAdmin = role === 'admin';
 
   const { data: labTests, isLoading } = useQuery({
     queryKey: ['lab-tests'],
@@ -63,7 +68,6 @@ export default function LabOrders() {
 
   const orderTestMutation = useMutation({
     mutationFn: async () => {
-      // Get patient name for notification
       const patientData = patients?.find(p => p.id === selectedPatient);
       const patientName = patientData ? `${patientData.first_name} ${patientData.last_name}` : 'Patient';
 
@@ -77,9 +81,7 @@ export default function LabOrders() {
       }).select().single();
       if (error) throw error;
 
-      // Notify lab technicians about the new order
       await notifyLabTechnicians(newTest.id, patientName, selectedTest, priority);
-
       return newTest;
     },
     onSuccess: () => {
@@ -87,6 +89,43 @@ export default function LabOrders() {
       toast.success('Lab test ordered and lab technicians notified');
       setDialogOpen(false);
       resetForm();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const updateTestMutation = useMutation({
+    mutationFn: async (data: { id: string; priority: string; notes: string; status: string }) => {
+      const { error } = await supabase
+        .from('lab_tests')
+        .update({
+          priority: data.priority,
+          notes: data.notes,
+          status: data.status,
+        })
+        .eq('id', data.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-tests'] });
+      toast.success('Lab test updated');
+      setEditDialogOpen(false);
+      setEditingTest(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const deleteTestMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('lab_tests').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-tests'] });
+      toast.success('Lab test deleted');
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -325,6 +364,45 @@ export default function LabOrders() {
                               Complete
                             </Button>
                           )}
+                          {isAdmin && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={() => {
+                                  setEditingTest(test);
+                                  setEditDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Lab Test?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete this lab test order.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteTestMutation.mutate(test.id)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -335,6 +413,72 @@ export default function LabOrders() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Test Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Lab Test</DialogTitle>
+          </DialogHeader>
+          {editingTest && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateTestMutation.mutate({
+                  id: editingTest.id,
+                  priority: editingTest.priority,
+                  notes: editingTest.notes || '',
+                  status: editingTest.status,
+                });
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <Label>Priority</Label>
+                <Select value={editingTest.priority} onValueChange={(v) => setEditingTest({ ...editingTest, priority: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="routine">Routine</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="stat">STAT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={editingTest.status} onValueChange={(v) => setEditingTest({ ...editingTest, status: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Textarea
+                  value={editingTest.notes || ''}
+                  onChange={(e) => setEditingTest({ ...editingTest, notes: e.target.value })}
+                  placeholder="Clinical notes..."
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateTestMutation.isPending}>
+                  {updateTestMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

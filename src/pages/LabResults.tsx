@@ -8,22 +8,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { FlaskConical, Search, Plus, FileText } from 'lucide-react';
+import { FlaskConical, Search, Plus, FileText, Edit, Trash2 } from 'lucide-react';
 import type { LabTest, LabResult, Patient } from '@/types/database';
 import { notifyDoctorLabResults } from '@/lib/notifications';
 
 export default function LabResults() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTest, setSelectedTest] = useState<(LabTest & { patient: Patient }) | null>(null);
+  const [editingResult, setEditingResult] = useState<LabResult | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [results, setResults] = useState<Array<{ parameter_name: string; value: string; unit: string; reference_range: string; is_abnormal: boolean }>>([
     { parameter_name: '', value: '', unit: '', reference_range: '', is_abnormal: false },
   ]);
+
+  const isAdmin = role === 'admin';
 
   const { data: labTests, isLoading } = useQuery({
     queryKey: ['lab-tests-for-results'],
@@ -38,7 +43,7 @@ export default function LabResults() {
     },
   });
 
-  const { data: existingResults } = useQuery({
+  const { data: existingResults, refetch: refetchResults } = useQuery({
     queryKey: ['lab-results', selectedTest?.id],
     queryFn: async () => {
       if (!selectedTest) return [];
@@ -72,14 +77,11 @@ export default function LabResults() {
       );
       if (error) throw error;
       
-      // Mark test as completed
       await supabase.from('lab_tests').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', selectedTest.id);
 
-      // Check if any results are abnormal
       const hasAbnormal = validResults.some(r => r.is_abnormal);
       const patientName = selectedTest.patient ? `${selectedTest.patient.first_name} ${selectedTest.patient.last_name}` : 'Patient';
 
-      // Notify the ordering doctor about results
       if (selectedTest.ordered_by) {
         await notifyDoctorLabResults(
           selectedTest.ordered_by,
@@ -96,6 +98,62 @@ export default function LabResults() {
       toast.success('Results saved and doctor notified');
       setSelectedTest(null);
       setResults([{ parameter_name: '', value: '', unit: '', reference_range: '', is_abnormal: false }]);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const updateResultMutation = useMutation({
+    mutationFn: async (data: { id: string; parameter_name: string; value: string; unit: string; reference_range: string; is_abnormal: boolean }) => {
+      const { error } = await supabase
+        .from('lab_results')
+        .update({
+          parameter_name: data.parameter_name,
+          value: data.value,
+          unit: data.unit || null,
+          reference_range: data.reference_range || null,
+          is_abnormal: data.is_abnormal,
+        })
+        .eq('id', data.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-results'] });
+      toast.success('Result updated');
+      setEditDialogOpen(false);
+      setEditingResult(null);
+      refetchResults();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const deleteResultMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('lab_results').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-results'] });
+      toast.success('Result deleted');
+      refetchResults();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const deleteTestMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('lab_tests').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab-tests-for-results'] });
+      toast.success('Lab test deleted');
+      setSelectedTest(null);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -179,10 +237,38 @@ export default function LabResults() {
                       </TableCell>
                       <TableCell>{format(new Date(test.ordered_at), 'MMM d, HH:mm')}</TableCell>
                       <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => setSelectedTest(test)}>
-                          <FileText className="h-4 w-4 mr-1" />
-                          {test.status === 'completed' ? 'View' : 'Enter'} Results
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setSelectedTest(test)}>
+                            <FileText className="h-4 w-4 mr-1" />
+                            {test.status === 'completed' ? 'View' : 'Enter'} Results
+                          </Button>
+                          {isAdmin && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Lab Test?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will delete the lab test and all associated results. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteTestMutation.mutate(test.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -211,6 +297,7 @@ export default function LabResults() {
                     <TableHead>Unit</TableHead>
                     <TableHead>Reference</TableHead>
                     <TableHead>Status</TableHead>
+                    {isAdmin && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -229,6 +316,47 @@ export default function LabResults() {
                           <Badge variant="outline">Normal</Badge>
                         )}
                       </TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                setEditingResult(result);
+                                setEditDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Result?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete this result parameter.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteResultMutation.mutate(result.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -310,6 +438,76 @@ export default function LabResults() {
                   {addResultMutation.isPending ? 'Saving...' : 'Save Results'}
                 </Button>
               </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Result Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Result</DialogTitle>
+          </DialogHeader>
+          {editingResult && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateResultMutation.mutate({
+                  id: editingResult.id,
+                  parameter_name: editingResult.parameter_name,
+                  value: editingResult.value,
+                  unit: editingResult.unit || '',
+                  reference_range: editingResult.reference_range || '',
+                  is_abnormal: editingResult.is_abnormal || false,
+                });
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <Label>Parameter Name</Label>
+                <Input
+                  value={editingResult.parameter_name}
+                  onChange={(e) => setEditingResult({ ...editingResult, parameter_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Value</Label>
+                <Input
+                  value={editingResult.value}
+                  onChange={(e) => setEditingResult({ ...editingResult, value: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Unit</Label>
+                <Input
+                  value={editingResult.unit || ''}
+                  onChange={(e) => setEditingResult({ ...editingResult, unit: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Reference Range</Label>
+                <Input
+                  value={editingResult.reference_range || ''}
+                  onChange={(e) => setEditingResult({ ...editingResult, reference_range: e.target.value })}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="edit-abnormal"
+                  checked={editingResult.is_abnormal || false}
+                  onCheckedChange={(checked) => setEditingResult({ ...editingResult, is_abnormal: !!checked })}
+                />
+                <Label htmlFor="edit-abnormal">Abnormal</Label>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateResultMutation.isPending}>
+                  {updateResultMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
             </form>
           )}
         </DialogContent>
