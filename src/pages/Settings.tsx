@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Palette, Building2, LayoutGrid } from 'lucide-react';
+import { Palette, Building2, LayoutGrid, Volume2 } from 'lucide-react';
 import { ModuleVisibility } from '@/types/database';
+import { soundManager } from '@/lib/sounds';
 
 const defaultModules: ModuleVisibility = {
   dashboard: true,
@@ -61,6 +62,7 @@ export default function Settings() {
   const [siteName, setSiteName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [enabledModules, setEnabledModules] = useState<ModuleVisibility>(defaultModules);
+  const [soundEnabled, setSoundEnabled] = useState(soundManager.isEnabled());
 
   useEffect(() => {
     if (settings) {
@@ -69,6 +71,14 @@ export default function Settings() {
       setEnabledModules(settings.enabled_modules || defaultModules);
     }
   }, [settings]);
+
+  const handleSoundToggle = (enabled: boolean) => {
+    setSoundEnabled(enabled);
+    soundManager.setEnabled(enabled);
+    if (enabled) {
+      soundManager.playSuccess();
+    }
+  };
 
   const toggleModule = (key: keyof ModuleVisibility) => {
     setEnabledModules(prev => ({
@@ -175,6 +185,30 @@ export default function Settings() {
               <Switch
                 checked={theme === 'dark'}
                 onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Volume2 className="h-5 w-5" />
+              Sound Settings
+            </CardTitle>
+            <CardDescription>Configure audio feedback for notifications</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Notification Sounds</Label>
+                <p className="text-xs text-muted-foreground">
+                  Play sounds for notifications and UI feedback
+                </p>
+              </div>
+              <Switch
+                checked={soundEnabled}
+                onCheckedChange={handleSoundToggle}
               />
             </div>
           </CardContent>

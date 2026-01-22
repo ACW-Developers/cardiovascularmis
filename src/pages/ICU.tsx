@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Plus, BedDouble, Search, FileText, LogOut, ClipboardList } from 'lucide-react';
+import { Plus, BedDouble, Search, FileText, LogOut, ClipboardList, Stethoscope, UserPlus } from 'lucide-react';
 import type { ICUAdmission, ICUProgressNote, Patient, Profile } from '@/types/database';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function ICU() {
   const { user, role } = useAuth();
@@ -275,6 +276,32 @@ export default function ICU() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-amber-500/10">
+                <Stethoscope className="h-6 w-6 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{admissions?.filter(a => a.surgery_id).length || 0}</p>
+                <p className="text-sm text-muted-foreground">Post-Op Transfers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-blue-500/10">
+                <UserPlus className="h-6 w-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{admissions?.filter(a => !a.surgery_id).length || 0}</p>
+                <p className="text-sm text-muted-foreground">Direct Admissions</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -310,24 +337,46 @@ export default function ICU() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAdmissions?.map((admission) => (
-                    <TableRow key={admission.id}>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono">
-                          {admission.bed_number || 'Unassigned'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {admission.patient?.first_name} {admission.patient?.last_name}
-                        <div className="text-xs text-muted-foreground">{admission.patient?.patient_number}</div>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">{admission.admission_reason}</TableCell>
-                      <TableCell>
-                        {format(new Date(admission.admitted_at), 'MMM d, HH:mm')}
-                        <div className="text-xs text-muted-foreground">
-                          {Math.round((Date.now() - new Date(admission.admitted_at).getTime()) / (1000 * 60 * 60))}h ago
-                        </div>
-                      </TableCell>
+                  {filteredAdmissions?.map((admission) => {
+                    const isFromSurgery = !!admission.surgery_id;
+                    return (
+                      <TableRow key={admission.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="font-mono">
+                              {admission.bed_number || 'Unassigned'}
+                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  {isFromSurgery ? (
+                                    <div className="p-1 rounded-full bg-amber-500/10">
+                                      <Stethoscope className="h-3.5 w-3.5 text-amber-500" />
+                                    </div>
+                                  ) : (
+                                    <div className="p-1 rounded-full bg-blue-500/10">
+                                      <UserPlus className="h-3.5 w-3.5 text-blue-500" />
+                                    </div>
+                                  )}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {isFromSurgery ? 'Post-Operative Transfer' : 'Direct Admission'}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {admission.patient?.first_name} {admission.patient?.last_name}
+                          <div className="text-xs text-muted-foreground">{admission.patient?.patient_number}</div>
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{admission.admission_reason}</TableCell>
+                        <TableCell>
+                          {format(new Date(admission.admitted_at), 'MMM d, HH:mm')}
+                          <div className="text-xs text-muted-foreground">
+                            {Math.round((Date.now() - new Date(admission.admitted_at).getTime()) / (1000 * 60 * 60))}h ago
+                          </div>
+                        </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
@@ -358,10 +407,11 @@ export default function ICU() {
                           >
                             <LogOut className="h-4 w-4 mr-1" /> Discharge
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

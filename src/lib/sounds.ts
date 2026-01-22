@@ -1,9 +1,17 @@
 // Sound effects utility for futuristic UI feedback
 // Uses Web Audio API for generating sounds programmatically
 
+const SOUND_STORAGE_KEY = 'cardioregistry_sound_enabled';
+
 class SoundManager {
   private audioContext: AudioContext | null = null;
   private enabled = true;
+
+  constructor() {
+    // Load preference from localStorage
+    const stored = localStorage.getItem(SOUND_STORAGE_KEY);
+    this.enabled = stored !== 'false';
+  }
 
   private getContext(): AudioContext {
     if (!this.audioContext) {
@@ -14,6 +22,11 @@ class SoundManager {
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
+    localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
   // Notification sound - gentle chime
