@@ -13,9 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Plus, BedDouble, Search, FileText, LogOut, ClipboardList, Stethoscope, UserPlus } from 'lucide-react';
+import { Plus, BedDouble, Search, FileText, ClipboardList, Stethoscope, UserPlus } from 'lucide-react';
 import type { ICUAdmission, ICUProgressNote, Patient, Profile } from '@/types/database';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import DischargeSummary from '@/components/icu/DischargeSummary';
 
 export default function ICU() {
   const { user, role } = useAuth();
@@ -399,14 +400,11 @@ export default function ICU() {
                           >
                             <ClipboardList className="h-4 w-4 mr-1" /> View
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => dischargeMutation.mutate(admission.id)}
-                            disabled={dischargeMutation.isPending}
-                          >
-                            <LogOut className="h-4 w-4 mr-1" /> Discharge
-                          </Button>
+                          <DischargeSummary 
+                            admission={admission}
+                            onDischarge={() => dischargeMutation.mutate(admission.id)}
+                            isDischarging={dischargeMutation.isPending}
+                          />
                           </div>
                         </TableCell>
                       </TableRow>

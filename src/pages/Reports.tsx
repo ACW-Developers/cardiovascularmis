@@ -13,11 +13,12 @@ import { format, differenceInYears, subDays, startOfMonth, endOfMonth, parseISO 
 import { 
   FileText, Download, Users, Activity, FlaskConical, Pill, Syringe, BarChart3, 
   TrendingUp, TrendingDown, AlertTriangle, Heart, BedDouble, Calendar,
-  PieChart, LineChart, Lightbulb
+  PieChart, LineChart, Lightbulb, FileSpreadsheet
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Patient, Vitals, LabTest, Prescription, Surgery } from '@/types/database';
+import PatientExcelExport from '@/components/reports/PatientExcelExport';
 
 type ReportType = 'patients' | 'vitals' | 'lab_tests' | 'prescriptions' | 'surgeries' | 'appointments' | 'icu' | 'summary' | 'research';
 
@@ -276,7 +277,8 @@ export default function Reports() {
       doc.text(reportConfig?.label || 'Report', pageWidth / 2, 24, { align: 'center' });
       
       doc.setFontSize(9);
-      doc.text(`Generated: ${format(new Date(), 'MMMM d, yyyy HH:mm')} | Period: ${format(new Date(startDate), 'MMM d')} - ${format(new Date(endDate), 'MMM d, yyyy')}`, pageWidth / 2, 31, { align: 'center' });
+      const timestamp = format(new Date(), 'yyyy-MM-dd HH:mm:ss');
+      doc.text(`Generated: ${timestamp} | Period: ${format(new Date(startDate), 'MMM d')} - ${format(new Date(endDate), 'MMM d, yyyy')}`, pageWidth / 2, 31, { align: 'center' });
 
       doc.setTextColor(0, 0, 0);
       let startY = 45;
@@ -369,7 +371,7 @@ export default function Reports() {
         case 'patients':
           autoTable(doc, {
             startY,
-            head: [['Patient #', 'Name', 'DOB', 'Gender', 'Phone', 'Blood Type', 'Status']],
+            head: [['Patient #', 'Name', 'DOB', 'Gender', 'Phone', 'Blood Type', 'Status', 'Registered']],
             body: patients?.map((p) => [
               p.patient_number,
               `${p.first_name} ${p.last_name}`,
@@ -378,6 +380,7 @@ export default function Reports() {
               p.phone,
               p.blood_type || '-',
               p.status,
+              format(new Date(p.created_at), 'MMM d, yyyy HH:mm'),
             ]) || [],
             styles: { fontSize: 8 },
             headStyles: { fillColor: [220, 38, 38] },
@@ -651,6 +654,9 @@ export default function Reports() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Excel Export Card */}
+          <PatientExcelExport />
 
           <Card>
             <CardHeader>
