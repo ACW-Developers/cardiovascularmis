@@ -39,8 +39,7 @@ export default function PatientRegistration() {
     cardiovascularHistory: '',
     previousSurgeries: '',
     currentMedications: '',
-    consentTreatment: false,
-    consentBiologicalSamples: false,
+    consentResearch: false,
   });
 
   const handleChange = (field: string, value: string | boolean) => {
@@ -75,9 +74,9 @@ export default function PatientRegistration() {
         cardiovascular_history: formData.cardiovascularHistory || null,
         previous_surgeries: formData.previousSurgeries || null,
         current_medications: formData.currentMedications || null,
-        consent_treatment: formData.consentTreatment,
-        consent_biological_samples: formData.consentBiologicalSamples,
-        consent_date: formData.consentTreatment ? new Date().toISOString() : null,
+        consent_treatment: formData.consentResearch,
+        consent_biological_samples: formData.consentResearch,
+        consent_date: formData.consentResearch ? new Date().toISOString() : null,
         registered_by: user?.id,
       });
 
@@ -340,37 +339,28 @@ export default function PatientRegistration() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <FileCheck className="w-5 h-5 text-success" />
-              Consent Management
+              Research Consent
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-3">
+          <CardContent>
+            <div className="flex items-start gap-3 p-4 border rounded-lg bg-muted/30">
               <Checkbox
-                id="consentTreatment"
-                checked={formData.consentTreatment}
-                onCheckedChange={(checked) => handleChange('consentTreatment', checked as boolean)}
+                id="consentResearch"
+                checked={formData.consentResearch}
+                onCheckedChange={(checked) => handleChange('consentResearch', checked as boolean)}
               />
               <div>
-                <Label htmlFor="consentTreatment" className="cursor-pointer">
-                  Consent for Treatment
+                <Label htmlFor="consentResearch" className="cursor-pointer font-medium">
+                  Consent for Treatment & Research Participation
                 </Label>
-                <p className="text-sm text-muted-foreground">
-                  Patient consents to receive medical treatment at this facility.
+                <p className="text-sm text-muted-foreground mt-1">
+                  I consent to receive medical treatment at this facility and authorize the use of my 
+                  medical records and biological samples for diagnostic purposes and approved research studies. 
+                  I understand that my personal information will be kept confidential and used only in 
+                  accordance with applicable data protection regulations.
                 </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="consentBiologicalSamples"
-                checked={formData.consentBiologicalSamples}
-                onCheckedChange={(checked) => handleChange('consentBiologicalSamples', checked as boolean)}
-              />
-              <div>
-                <Label htmlFor="consentBiologicalSamples" className="cursor-pointer">
-                  Consent for Biological Sample Usage
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Patient consents to the use of biological samples for diagnostic and research purposes.
+                <p className="text-xs text-muted-foreground mt-2">
+                  By checking this box, you agree to both treatment and research participation terms.
                 </p>
               </div>
             </div>
