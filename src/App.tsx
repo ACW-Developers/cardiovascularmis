@@ -36,6 +36,9 @@ import DoctorConsultation from "./pages/DoctorConsultation";
 import PatientDetail from "./pages/PatientDetail";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import Downloads from "./pages/Downloads";
+import ResearchDashboard from "./pages/ResearchDashboard";
+import ResearcherSettings from "./pages/ResearcherSettings";
 
 const queryClient = new QueryClient();
 
@@ -103,6 +106,15 @@ const App = () => (
                   } />
                   <Route path="/settings" element={
                     <ProtectedRoute allowedRoles={['admin']}><Settings /></ProtectedRoute>
+                  } />
+                  <Route path="/researcher/settings" element={
+                    <ProtectedRoute allowedRoles={['researcher']}><ResearcherSettings /></ProtectedRoute>
+                  } />
+                  <Route path="/downloads" element={
+                    <ProtectedRoute allowedRoles={['researcher']}><Downloads /></ProtectedRoute>
+                  } />
+                  <Route path="/research-dashboard" element={
+                    <ProtectedRoute allowedRoles={['researcher']}><ResearchDashboard /></ProtectedRoute>
                   } />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/reports" element={<Reports />} />

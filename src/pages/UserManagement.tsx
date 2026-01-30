@@ -22,6 +22,7 @@ const roleLabels: Record<AppRole, { label: string; color: string }> = {
   doctor: { label: 'Doctor', color: 'bg-blue-500 text-white' },
   lab_technician: { label: 'Lab Technician', color: 'bg-amber-500 text-white' },
   pharmacist: { label: 'Pharmacist', color: 'bg-purple-500 text-white' },
+  researcher: { label: 'Researcher', color: 'bg-cyan-500 text-white' },
 };
 
 export default function UserManagement() {
@@ -201,6 +202,7 @@ export default function UserManagement() {
                 <SelectItem value="nurse">Nurses</SelectItem>
                 <SelectItem value="lab_technician">Lab Technicians</SelectItem>
                 <SelectItem value="pharmacist">Pharmacists</SelectItem>
+                <SelectItem value="researcher">Researchers</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -350,6 +352,7 @@ export default function UserManagement() {
                     <SelectItem value="nurse">Nurse</SelectItem>
                     <SelectItem value="lab_technician">Lab Technician</SelectItem>
                     <SelectItem value="pharmacist">Pharmacist</SelectItem>
+                    <SelectItem value="researcher">Researcher</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

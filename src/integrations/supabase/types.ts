@@ -178,6 +178,39 @@ export type Database = {
         }
         Relationships: []
       }
+      downloads: {
+        Row: {
+          document_name: string
+          document_type: string
+          downloaded_at: string
+          file_format: string
+          file_size_bytes: number | null
+          id: string
+          metadata: Json | null
+          user_id: string
+        }
+        Insert: {
+          document_name: string
+          document_type: string
+          downloaded_at?: string
+          file_format?: string
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          user_id: string
+        }
+        Update: {
+          document_name?: string
+          document_type?: string
+          downloaded_at?: string
+          file_format?: string
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       follow_ups: {
         Row: {
           completed_at: string | null
@@ -913,7 +946,13 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "nurse" | "doctor" | "lab_technician" | "pharmacist"
+      app_role:
+        | "admin"
+        | "nurse"
+        | "doctor"
+        | "lab_technician"
+        | "pharmacist"
+        | "researcher"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1041,7 +1080,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "nurse", "doctor", "lab_technician", "pharmacist"],
+      app_role: [
+        "admin",
+        "nurse",
+        "doctor",
+        "lab_technician",
+        "pharmacist",
+        "researcher",
+      ],
     },
   },
 } as const

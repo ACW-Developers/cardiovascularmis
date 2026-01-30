@@ -1,4 +1,4 @@
-export type AppRole = 'admin' | 'nurse' | 'doctor' | 'lab_technician' | 'pharmacist';
+export type AppRole = 'admin' | 'nurse' | 'doctor' | 'lab_technician' | 'pharmacist' | 'researcher';
 
 export interface Profile {
   id: string;
