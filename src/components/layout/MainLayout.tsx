@@ -6,6 +6,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
+import { TourProvider } from '@/contexts/TourContext';
+import { TourOverlay } from '@/components/tour/TourOverlay';
 
 function MainLayoutContent() {
   const { settings } = useSettings();
@@ -39,7 +41,10 @@ export function MainLayout() {
 
   return (
     <SidebarContext.Provider value={{ collapsed, setCollapsed: toggleCollapsed }}>
-      <MainLayoutContent />
+      <TourProvider>
+        <MainLayoutContent />
+        <TourOverlay />
+      </TourProvider>
     </SidebarContext.Provider>
   );
 }
