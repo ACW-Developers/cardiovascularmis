@@ -1,6 +1,7 @@
-import { Bell, Moon, Sun, LogOut, User } from 'lucide-react';
+import { Bell, Moon, Sun, LogOut, User, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTour } from '@/contexts/TourContext';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -15,10 +16,17 @@ import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { MobileSidebarTrigger } from './Sidebar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function Navbar() {
   const { profile, role, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { startTour } = useTour();
   const navigate = useNavigate();
   const { unreadCount, notifications, markAsRead } = useNotifications();
 
@@ -50,6 +58,26 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* System Tour */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={startTour}
+                  className="text-muted-foreground hover:text-foreground h-8 w-8 relative group"
+                >
+                  <Sparkles className="w-4 h-4 group-hover:text-primary transition-colors" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full animate-pulse" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Start System Tour</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* Theme Toggle */}
           <Button
             variant="ghost"
