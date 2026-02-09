@@ -36,6 +36,7 @@ const defaultModules: ModuleVisibility = {
   user_management: true,
   settings: true,
   activity_logs: true,
+  teleconferencing: true,
 };
 
 // Only show toggles for core functional modules (not admin-only ones)
@@ -56,6 +57,7 @@ const moduleLabels: Partial<Record<keyof ModuleVisibility, string>> = {
   follow_ups: 'Follow-ups',
   reports: 'Reports',
   activity_logs: 'Activity Logs',
+  teleconferencing: 'Teleconferencing',
 };
 
 export default function Settings() {

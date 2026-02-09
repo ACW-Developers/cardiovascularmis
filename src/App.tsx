@@ -41,6 +41,7 @@ import Downloads from "./pages/Downloads";
 import ResearchDashboard from "./pages/ResearchDashboard";
 import ResearcherSettings from "./pages/ResearcherSettings";
 import ActivityLogs from "./pages/ActivityLogs";
+import Teleconferencing from "./pages/Teleconferencing";
 
 const queryClient = new QueryClient();
 
@@ -106,6 +107,9 @@ const App = () => (
                   } />
                   <Route path="/icu" element={<ICU />} />
                   <Route path="/follow-ups" element={<FollowUps />} />
+                  <Route path="/teleconferencing" element={
+                    <ProtectedRoute allowedRoles={['admin', 'doctor']}><Teleconferencing /></ProtectedRoute>
+                  } />
                   <Route path="/admin/users" element={
                     <ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>
                   } />

@@ -492,6 +492,128 @@ export type Database = {
           },
         ]
       }
+      meeting_participants: {
+        Row: {
+          id: string
+          invited_at: string
+          meeting_id: string
+          responded_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          invited_at?: string
+          meeting_id: string
+          responded_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          invited_at?: string
+          meeting_id?: string
+          responded_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_participants_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meetings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meeting_patients: {
+        Row: {
+          added_by: string
+          created_at: string
+          decision: string | null
+          discussion_notes: string | null
+          id: string
+          meeting_id: string
+          patient_id: string
+        }
+        Insert: {
+          added_by: string
+          created_at?: string
+          decision?: string | null
+          discussion_notes?: string | null
+          id?: string
+          meeting_id: string
+          patient_id: string
+        }
+        Update: {
+          added_by?: string
+          created_at?: string
+          decision?: string | null
+          discussion_notes?: string | null
+          id?: string
+          meeting_id?: string
+          patient_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_patients_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_patients_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meetings: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          duration_minutes: number | null
+          id: string
+          room_id: string
+          scheduled_date: string
+          scheduled_time: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          room_id: string
+          scheduled_date: string
+          scheduled_time: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          room_id?: string
+          scheduled_date?: string
+          scheduled_time?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
