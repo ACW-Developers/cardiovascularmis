@@ -65,6 +65,7 @@ export interface ModuleVisibility {
   user_management: boolean;
   settings: boolean;
   activity_logs: boolean;
+  teleconferencing: boolean;
 }
 
 export interface ActivityLog {
