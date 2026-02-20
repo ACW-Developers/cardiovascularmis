@@ -1,168 +1,117 @@
 
+## ICU → Ward Transfer Workflow Redesign
 
-# AI-Powered System Walkthrough Implementation Plan
+### What's Changing
 
-## Overview
+Currently the ICU page has a "Discharge" button (via the `DischargeSummary` component) that simultaneously marks the patient as discharged from ICU AND silently creates a ward record in the background. The user wants to make this a two-step, explicit process:
 
-This plan implements an interactive AI walkthrough feature that provides users with:
-1. **Audio narration** - A 1-minute AI-generated voice overview of the system
-2. **Guided tour** - Step-by-step highlighting of key modules based on user role
-3. **Icon in navbar** - Easy access to start the walkthrough at any time
+1. ICU → **Move to Ward** (explicit button, with bed selection)
+2. Ward → **Discharge** (final discharge from the system, already exists in `Ward.tsx`)
 
-## Architecture
+The `DischargeSummary` component (which also generates the PDF) should be retained but renamed/repurposed as a "Transfer to Ward" action.
+
+---
+
+### Changes Required
+
+**`src/pages/ICU.tsx`**
+
+- Remove the `DischargeSummary` component import and usage from the actions column.
+- Remove the `dischargeMutation` that currently fires the combined discharge + ward-insert.
+- Add a **"Move to Ward"** button in the actions column that opens a confirmation/transfer dialog.
+- The transfer dialog will:
+  - Show the patient name and current ICU bed.
+  - Allow selection of an available **ward bed** (W-101 to W-205).
+  - Have a text field for transfer notes (e.g., "Stable, ready for step-down").
+  - On confirm: update `icu_admissions.status = 'transferred'` and `discharged_at = now()`, then insert into `ward_admissions` with `source = 'icu_discharge'`.
+- Add a new `transferToWardMutation` to handle the two-step database write atomically.
+- Keep the "Add Note" and "View" (progress notes) buttons as-is.
+- Update the stat card label from "discharged" language to reflect the new flow.
+
+**`src/components/icu/DischargeSummary.tsx`**
+
+- The PDF generation logic inside this component is valuable and should be kept.
+- The "Discharge" button trigger on line 388 will be replaced — the component will be adapted so the "Transfer to Ward" dialog in ICU.tsx triggers the PDF download **separately** (as an "Export Summary" button) rather than being the discharge gate.
+- Alternatively, keep the component as a standalone "Export ICU Summary" button (not tied to discharge action), so staff can still print the ICU clinical summary at any time without it triggering a transfer.
+
+**`src/pages/Ward.tsx`**
+
+- No structural changes needed — it already handles discharge correctly and shows patients from all sources including `icu_discharge`.
+- The "Discharge" button in Ward remains the final discharge point.
+
+---
+
+### New Flow Diagram
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                        Navbar                                │
-│  [Theme] [Notifications] [🎯 Tour] [User Menu]              │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  AI Walkthrough System                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ Tour Context │  │ Tour Dialog  │  │ ElevenLabs TTS   │  │
-│  │  (State)     │  │  (UI Modal)  │  │ (Audio Engine)   │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│               Role-Based Tour Steps                          │
-│  Admin: All modules                                          │
-│  Nurse: Patients, Vitals, Appointments                       │
-│  Doctor: Patients, Appointments, Lab, Prescriptions          │
-│  Lab Tech: Lab Orders, Lab Results                           │
-│  Pharmacist: Prescriptions, Pharmacy, History                │
-└─────────────────────────────────────────────────────────────┘
+ICU Admitted
+     │
+     ├── [Add Note]  ──► Progress notes recorded
+     ├── [View]      ──► View all ICU notes
+     ├── [Export Summary] ──► PDF of ICU clinical record (no transfer)
+     └── [Move to Ward] ──► Opens Transfer Dialog
+                                │
+                          Select Ward Bed
+                          Add Transfer Notes
+                          Confirm
+                                │
+                   icu_admissions → status: 'transferred'
+                   ward_admissions → source: 'icu_discharge'
+                                │
+                         Ward Module
+                                │
+                         [Discharge] ──► Final discharge from system
 ```
 
-## Features
+---
 
-### 1. AI Audio Overview (ElevenLabs Text-to-Speech)
-- Creates an edge function to generate AI audio narration
-- Produces a ~60 second overview of CardioRegistry
-- Uses a professional, friendly voice
-- Content is role-aware (different overview for different users)
+### Technical Implementation Details
 
-### 2. Interactive Guided Tour
-- Highlights each module section with spotlight effect
-- Shows tooltip with description of each feature
-- Navigation controls: Next, Previous, Skip
-- Progress indicator
-- Auto-advances after audio segment completes
+**New `transferToWardMutation` in ICU.tsx:**
+```typescript
+const transferToWardMutation = useMutation({
+  mutationFn: async ({ admissionId, wardBed, notes }) => {
+    // Step 1: Mark ICU admission as transferred
+    await supabase.from('icu_admissions')
+      .update({ status: 'transferred', discharged_at: new Date().toISOString() })
+      .eq('id', admissionId);
 
-### 3. Visual Effects
-- Spotlight overlay that dims everything except current element
-- Smooth CSS animations
-- Pulsing indicator on navbar tour icon when available
-- Sound effects integration with existing soundManager
+    // Step 2: Create ward admission
+    await supabase.from('ward_admissions').insert({
+      patient_id: admission.patient_id,
+      surgery_id: admission.surgery_id || null,
+      icu_admission_id: admissionId,
+      admitted_by: user?.id,
+      bed_number: wardBed || null,
+      admission_reason: notes || `ICU step-down: ${admission.admission_reason}`,
+      source: 'icu_discharge',
+      status: 'admitted',
+    });
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['icu-admissions'] });
+    queryClient.invalidateQueries({ queryKey: ['ward-admissions'] });
+    toast.success('Patient transferred to Ward successfully');
+    setTransferDialogOpen(false);
+  }
+});
+```
 
-## Implementation Steps
+**Ward bed list** (already defined in Ward.tsx, will be duplicated in ICU.tsx for the selection):
+```
+W-101 through W-110, W-201 through W-205
+```
 
-### Step 1: Create ElevenLabs TTS Edge Function
-Create `supabase/functions/elevenlabs-tts/index.ts`:
-- Accepts text and voice parameters
-- Calls ElevenLabs API to generate speech
-- Returns audio buffer for client playback
-- Requires `ELEVENLABS_API_KEY` secret
+**ICU admission query** will continue to filter `status = 'admitted'` — so transferred patients disappear from the ICU list automatically once the transfer is confirmed.
 
-### Step 2: Create Tour Context & Provider
-Create `src/contexts/TourContext.tsx`:
-- Manages tour state (active, currentStep, isPlaying)
-- Stores role-specific tour steps
-- Provides methods: startTour, nextStep, prevStep, endTour
-- Handles audio playback coordination
+**The `DischargeSummary` component** will be repurposed as a standalone "Export ICU Summary" button that opens the PDF preview dialog without triggering any database write — it will no longer be the discharge mechanism.
 
-### Step 3: Create Tour Spotlight Component
-Create `src/components/tour/TourSpotlight.tsx`:
-- Renders overlay with cutout for highlighted element
-- Uses CSS clip-path or mask for spotlight effect
-- Positions tooltip near highlighted element
-- Includes navigation controls
+---
 
-### Step 4: Create Tour Dialog for Audio Overview
-Create `src/components/tour/TourDialog.tsx`:
-- Modal that plays the system overview audio
-- Shows animated waveform or speaker icon
-- Displays transcript text in sync
-- Play/Pause/Stop controls
-- Option to skip to interactive tour
+### Summary of Files to Edit
 
-### Step 5: Add Tour Icon to Navbar
-Update `src/components/layout/Navbar.tsx`:
-- Add "Sparkles" or "HelpCircle" icon button
-- Triggers tour start on click
-- Shows tooltip "Start System Tour"
-- Subtle pulse animation to attract attention for first-time users
-
-### Step 6: Define Role-Based Tour Steps
-Create `src/lib/tourSteps.ts`:
-- Define tour content for each module
-- Map steps to DOM selectors
-- Include audio script for each step
-- Filter steps based on user role
-
-### Step 7: Add Tour Styles
-Update `src/index.css`:
-- Spotlight overlay styles
-- Tooltip positioning and animations
-- Pulse animations for tour icon
-
-## Role-Specific Tour Content
-
-| Role | Modules Covered |
-|------|-----------------|
-| **Admin** | Dashboard, Patients, Appointments, Lab, Pharmacy, Surgery Suite, ICU, Reports, User Management, Settings |
-| **Nurse** | Dashboard, Patients, Vitals, Appointments, Pre/Post-Operative, ICU |
-| **Doctor** | Dashboard, My Patients, Consultation, Schedule, Lab Results, Prescriptions, Surgery Suite |
-| **Lab Tech** | Dashboard, Lab Orders, Lab Results, Reports |
-| **Pharmacist** | Dashboard, Prescriptions, Pharmacy, Dispensing History |
-
-## Audio Script Example (Admin Overview)
-
-> "Welcome to CardioRegistry, your comprehensive cardiovascular patient management system. From this dashboard, you can monitor patient statistics, today's appointments, and pending tasks at a glance. 
-> 
-> The left sidebar provides quick access to all modules: manage patients and their records, schedule and track appointments, order lab tests and review results, handle prescriptions and pharmacy dispensing, and coordinate surgical procedures from pre-op through ICU care.
-> 
-> As an administrator, you also have access to user management, system settings, and detailed activity logs. Let me walk you through each section."
-
-## Technical Details
-
-### Dependencies
-- ElevenLabs API (for TTS)
-- Existing `soundManager` for UI sounds
-
-### New Files
-- `supabase/functions/elevenlabs-tts/index.ts` - TTS edge function
-- `src/contexts/TourContext.tsx` - Tour state management
-- `src/components/tour/TourSpotlight.tsx` - Spotlight overlay
-- `src/components/tour/TourDialog.tsx` - Audio overview modal
-- `src/lib/tourSteps.ts` - Tour step definitions
-
-### Modified Files
-- `src/components/layout/Navbar.tsx` - Add tour trigger button
-- `src/components/layout/MainLayout.tsx` - Wrap with TourProvider
-- `src/index.css` - Tour-related styles
-
-## User Experience Flow
-
-1. User clicks tour icon (✨) in navbar
-2. Dialog opens with "Start Tour" and audio play button
-3. AI voice provides 60-second system overview
-4. User can then choose "Take Interactive Tour" or "Close"
-5. Interactive tour highlights each module with descriptions
-6. Tour remembers completion state in localStorage
-
-## Estimated Effort
-
-- Edge function setup: ~15 mins
-- Tour context & logic: ~30 mins
-- Spotlight component: ~30 mins
-- Audio dialog: ~20 mins
-- Navbar integration: ~10 mins
-- CSS animations: ~15 mins
-- Testing & refinement: ~30 mins
-
-**Total: ~2.5 hours**
-
+| File | Change |
+|---|---|
+| `src/pages/ICU.tsx` | Remove discharge mutation, add "Move to Ward" dialog + transfer mutation, repurpose DischargeSummary as export-only |
+| `src/components/icu/DischargeSummary.tsx` | Remove `onDischarge`/`isDischarging` props and the discharge button from the dialog footer — make it export-only |
+| `src/pages/Ward.tsx` | No changes needed |
