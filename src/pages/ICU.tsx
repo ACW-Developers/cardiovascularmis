@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Plus, BedDouble, Search, FileText, ClipboardList, Stethoscope, UserPlus } from 'lucide-react';
+import { Plus, BedDouble, Search, FileText, ClipboardList, Stethoscope, UserPlus, ArrowRight } from 'lucide-react';
 import type { ICUAdmission, ICUProgressNote, Patient, Profile } from '@/types/database';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import DischargeSummary from '@/components/icu/DischargeSummary';
@@ -25,7 +25,11 @@ export default function ICU() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [viewNotesDialogOpen, setViewNotesDialogOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedAdmission, setSelectedAdmission] = useState<(ICUAdmission & { patient: Patient }) | null>(null);
+  const [selectedTransferAdmission, setSelectedTransferAdmission] = useState<(ICUAdmission & { patient: Patient }) | null>(null);
+  const [wardBed, setWardBed] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
 
   // Form state
   const [selectedPatient, setSelectedPatient] = useState<string>('');
@@ -128,37 +132,34 @@ export default function ICU() {
     },
   });
 
-  const dischargeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      // Find the admission to get patient info
-      const admission = admissions?.find(a => a.id === id);
-      
-      const { error } = await supabase
+  const transferToWardMutation = useMutation({
+    mutationFn: async ({ admission }: { admission: ICUAdmission & { patient: Patient } }) => {
+      const { error: icuError } = await supabase
         .from('icu_admissions')
-        .update({
-          status: 'discharged',
-          discharged_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (error) throw error;
+        .update({ status: 'transferred', discharged_at: new Date().toISOString() })
+        .eq('id', admission.id);
+      if (icuError) throw icuError;
 
-      // Auto-transfer to Ward for final recovery
-      if (admission) {
-        await supabase.from('ward_admissions').insert({
-          patient_id: admission.patient_id,
-          surgery_id: admission.surgery_id || null,
-          icu_admission_id: admission.id,
-          admitted_by: user?.id,
-          admission_reason: `ICU step-down: ${admission.admission_reason}`,
-          source: 'icu_discharge',
-          status: 'admitted',
-        });
-      }
+      const { error: wardError } = await supabase.from('ward_admissions').insert({
+        patient_id: admission.patient_id,
+        surgery_id: admission.surgery_id || null,
+        icu_admission_id: admission.id,
+        admitted_by: user?.id,
+        bed_number: wardBed || null,
+        admission_reason: transferNotes || `ICU step-down: ${admission.admission_reason}`,
+        source: 'icu_discharge',
+        status: 'admitted',
+      });
+      if (wardError) throw wardError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['icu-admissions'] });
       queryClient.invalidateQueries({ queryKey: ['ward-admissions'] });
-      toast.success('Patient discharged from ICU and transferred to Ward');
+      toast.success('Patient transferred to Ward successfully');
+      setTransferDialogOpen(false);
+      setWardBed('');
+      setTransferNotes('');
+      setSelectedTransferAdmission(null);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -420,11 +421,20 @@ export default function ICU() {
                           >
                             <ClipboardList className="h-4 w-4 mr-1" /> View
                           </Button>
-                          <DischargeSummary 
-                            admission={admission}
-                            onDischarge={() => dischargeMutation.mutate(admission.id)}
-                            isDischarging={dischargeMutation.isPending}
-                          />
+                          <DischargeSummary admission={admission} />
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="gradient-primary"
+                            onClick={() => {
+                              setSelectedTransferAdmission(admission);
+                              setWardBed('');
+                              setTransferNotes('');
+                              setTransferDialogOpen(true);
+                            }}
+                          >
+                            <ArrowRight className="h-4 w-4 mr-1" /> Move to Ward
+                          </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -547,6 +557,61 @@ export default function ICU() {
               ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move to Ward Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRight className="h-5 w-5 text-primary" />
+              Transfer to Ward
+            </DialogTitle>
+          </DialogHeader>
+          {selectedTransferAdmission && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/50 text-sm">
+                <p className="font-medium">{selectedTransferAdmission.patient?.first_name} {selectedTransferAdmission.patient?.last_name}</p>
+                <p className="text-muted-foreground">ICU Bed: {selectedTransferAdmission.bed_number || 'Unassigned'}</p>
+                <p className="text-muted-foreground text-xs mt-1">{selectedTransferAdmission.admission_reason}</p>
+              </div>
+              <div>
+                <Label>Ward Bed Assignment</Label>
+                <Select value={wardBed} onValueChange={setWardBed}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select ward bed (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['W-101','W-102','W-103','W-104','W-105','W-106','W-107','W-108','W-109','W-110','W-201','W-202','W-203','W-204','W-205'].map((b) => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Transfer Notes</Label>
+                <Textarea
+                  value={transferNotes}
+                  onChange={(e) => setTransferNotes(e.target.value)}
+                  placeholder="Stable, ready for step-down care..."
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  className="gradient-primary"
+                  onClick={() => transferToWardMutation.mutate({ admission: selectedTransferAdmission })}
+                  disabled={transferToWardMutation.isPending}
+                >
+                  {transferToWardMutation.isPending ? 'Transferring...' : 'Confirm Transfer to Ward'}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

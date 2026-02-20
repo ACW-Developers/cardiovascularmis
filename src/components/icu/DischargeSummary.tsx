@@ -21,11 +21,9 @@ import type { ICUAdmission, Patient, ICUProgressNote } from '@/types/database';
 
 interface DischargeSummaryProps {
   admission: ICUAdmission & { patient: Patient };
-  onDischarge: () => void;
-  isDischarging: boolean;
 }
 
-export default function DischargeSummary({ admission, onDischarge, isDischarging }: DischargeSummaryProps) {
+export default function DischargeSummary({ admission }: DischargeSummaryProps) {
   const { settings } = useSettings();
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -385,15 +383,15 @@ export default function DischargeSummary({ admission, onDischarge, isDischarging
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="text-primary border-primary hover:bg-primary hover:text-primary-foreground">
-          <FileDown className="h-4 w-4 mr-1" /> Discharge
+        <Button size="sm" variant="outline">
+          <FileDown className="h-4 w-4 mr-1" /> Export Summary
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BedDouble className="h-5 w-5 text-primary" />
-            Discharge Summary - {admission.patient.first_name} {admission.patient.last_name}
+            ICU Clinical Summary - {admission.patient.first_name} {admission.patient.last_name}
           </DialogTitle>
         </DialogHeader>
         
@@ -618,19 +616,11 @@ export default function DischargeSummary({ admission, onDischarge, isDischarging
 
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            Close
           </Button>
-          <Button onClick={generateDischargePDF} disabled={generating}>
+          <Button onClick={generateDischargePDF} disabled={generating} className="gradient-primary">
             {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
-            Download Summary
-          </Button>
-          <Button 
-            className="gradient-primary" 
-            onClick={() => { onDischarge(); setOpen(false); }}
-            disabled={isDischarging}
-          >
-            {isDischarging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Confirm Discharge
+            Download PDF
           </Button>
         </div>
       </DialogContent>
